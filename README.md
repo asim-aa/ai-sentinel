@@ -79,6 +79,23 @@ recently-resolved incident from that baseline computation (`storage.py::excluded
 sustained fault keeps getting flagged on later sweeps rather than going quiet. See
 `docs/ARCHITECTURE.md` §4 for how.
 
+## Configuring alerts
+
+Every incident is always logged. To also deliver it somewhere:
+
+- **`SLACK_WEBHOOK_URL`** — a Slack [incoming webhook](https://api.slack.com/messaging/webhooks)
+  URL. Delivers a properly formatted message: a color bar matching the incident's severity (the
+  same palette as the dashboard), the summary, the root-cause explanation, and the recommended
+  action.
+- **`ALERT_WEBHOOK_URL`** — any URL that accepts a POST with a flat JSON body (`detector`,
+  `severity`, `summary`, `root_cause`, `confidence`, `recommended_action`) — for anything Slack
+  doesn't cover: PagerDuty, a custom endpoint, whatever.
+- **`ALERT_MIN_SEVERITY`** — `warning` (default: everything) or `critical`, to cut down on volume
+  once you've seen enough `cost_spike` warnings.
+
+Set either, both, or neither — they're independent, and each delivery is wrapped separately so
+one failing (bad URL, network blip) doesn't block the other. See `ai_sentinel/alerts.py`.
+
 ## Testing
 
 ```bash
@@ -104,7 +121,7 @@ ai_sentinel/          the reliability engine
   detectors.py         6 threshold-based failure detectors
   rootcause.py         per-stage deviation correlator
   remediation.py       action recommendation + execution
-  alerts.py            structured logging + optional webhook
+  alerts.py            structured logging + Slack + generic webhook delivery
   engine.py            ties detect -> diagnose -> recommend -> record -> alert together
   dashboard/           API + static UI
 
@@ -116,6 +133,7 @@ docs/ARCHITECTURE.md   the six-diagram architecture write-up
 
 ## Deliberately out of scope
 
-Real Slack/email alerting, Docker/an OTel Collector/Prometheus export, a second real model
-provider, and LLM-as-judge quality evaluation — all reasonable follow-ups, none needed to
-demonstrate the core idea. See `docs/ARCHITECTURE.md` for the full reasoning.
+Real email/SMTP alerting (Slack and generic webhooks are covered — see above), Docker/an OTel
+Collector/Prometheus export, a second real model provider, and LLM-as-judge quality evaluation —
+all reasonable follow-ups, none needed to demonstrate the core idea. See `docs/ARCHITECTURE.md`
+for the full reasoning.

@@ -80,6 +80,15 @@ self-referential design (the system excludes its own detected anomalies from its
 covered by regression tests in both `tests/test_detectors.py` and `tests/test_rootcause.py` that
 seed a polluted baseline and assert detection fails without an incident row and succeeds with one.
 
+Every incident also goes through `ai_sentinel/alerts.py::emit_alert`, which always logs a
+structured line and, if configured, delivers to Slack (`SLACK_WEBHOOK_URL` — a proper Block Kit
+message with a severity-colored bar matching the dashboard's own palette) and/or a generic
+webhook (`ALERT_WEBHOOK_URL` — flat JSON). `ALERT_MIN_SEVERITY` filters which severities get
+delivered (logging always happens regardless). The two delivery paths are independent — one
+failing doesn't block the other — verified both with mocked-HTTP unit tests
+(`tests/test_alerts.py`) and a real local HTTP receiver that the actual `emit_alert()` code path
+was pointed at during development.
+
 ## 5. Remediation / failover flow
 
 Every incident carries a recommended action; nothing executes until you click it.
