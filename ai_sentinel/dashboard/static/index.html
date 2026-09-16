@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Sentinel</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1><span class="dot" id="header-dot"></span> AI Sentinel</h1>
+  <div class="status-pill healthy" id="overall-pill">checking…</div>
+</header>
+
+<main>
+  <section>
+    <h2>Health checks</h2>
+    <div class="health-strip">
+      <div class="health-card">
+        <div class="label">Liveness — is the process alive?</div>
+        <div class="value"><span class="badge pending" id="live-badge"></span><span id="live-text">—</span></div>
+        <div class="detail" id="live-detail">GET /health/live</div>
+      </div>
+      <div class="health-card">
+        <div class="label">Readiness — can it serve traffic?</div>
+        <div class="value"><span class="badge pending" id="ready-badge"></span><span id="ready-text">—</span></div>
+        <div class="detail" id="ready-detail">GET /health/ready</div>
+      </div>
+      <div class="health-card">
+        <div class="label">Synthetic — does it behave correctly?</div>
+        <div class="value"><span class="badge pending" id="synth-badge"></span><span id="synth-text">—</span></div>
+        <div class="detail" id="synth-detail">"Return exactly the word HEALTHY" every 60s</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Metrics <span style="text-transform:none;color:var(--text-dim)">(last 5 min)</span></h2>
+    <div class="metrics-grid" id="metrics-grid"></div>
+  </section>
+
+  <section>
+    <h2>Controls</h2>
+    <div class="panel control-row">
+      <div class="control-group">
+        <div class="group-label">Fault injection</div>
+        <div class="btn-row" id="fault-buttons"></div>
+      </div>
+      <div class="control-group">
+        <div class="group-label">Active backend</div>
+        <div class="btn-row" id="backend-buttons"></div>
+      </div>
+      <div class="control-group">
+        <div class="group-label">Traffic</div>
+        <div class="btn-row">
+          <button id="send-traffic-btn" class="primary">Send 5 test requests</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Incidents</h2>
+    <div class="incident-list" id="incident-list"><div class="empty">No incidents yet.</div></div>
+  </section>
+
+  <section>
+    <h2>Trace explorer <span style="text-transform:none;color:var(--text-dim)">(most recent requests)</span></h2>
+    <div class="trace-list" id="trace-list"><div class="empty">No traces yet — send a test request.</div></div>
+  </section>
+</main>
+
+<footer>AI Sentinel · demo AI service on :8000 · engine on :8500 · polling every 3s</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
