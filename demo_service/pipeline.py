@@ -76,13 +76,18 @@ async def run_pipeline(
                 backend = backends[state.active_backend]
                 span.set_attribute("backend", backend.name)
 
-                if state.fault_mode == "llm_errors" and random.random() < 0.7:
+                # llm_call faults model a problem with the primary provider specifically — they
+                # don't apply once traffic has actually moved to backup, so that failing over is a
+                # real fix and not just a relabeling of the same broken call.
+                fault_active_here = state.active_backend == "primary"
+
+                if fault_active_here and state.fault_mode == "llm_errors" and random.random() < 0.7:
                     err = PipelineError("llm_error", "simulated LLM provider error")
                     span.set_status(Status(StatusCode.ERROR))
                     span.record_exception(err)
                     raise err
 
-                if state.fault_mode == "slow_llm":
+                if fault_active_here and state.fault_mode == "slow_llm":
                     await asyncio.sleep(random.uniform(2.0, 4.0))
 
                 full_prompt = prompt

@@ -54,3 +54,20 @@ async def execute(action: str, demo_url: str) -> dict:
             raise ValueError(f"no executable remediation for action: {action}")
         resp.raise_for_status()
         return resp.json()
+
+
+async def rollback(action: str, demo_url: str) -> dict:
+    """Undoes an executed action when verification finds it didn't help. For fail_over this is
+    just calling execute() again — it always toggles to "whichever backend isn't active", so a
+    second call flips back to wherever it started, with no need to have remembered that state."""
+    if action == "fail_over":
+        return await execute("fail_over", demo_url)
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        if action == "disable_retrieval":
+            resp = await client.post(f"{demo_url}/admin/retrieval", json={"enabled": True})
+        elif action == "disable_tools":
+            resp = await client.post(f"{demo_url}/admin/tools", json={"enabled": True})
+        else:
+            raise ValueError(f"no rollback defined for action: {action}")
+        resp.raise_for_status()
+        return resp.json()

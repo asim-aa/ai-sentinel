@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ai_sentinel import engine, remediation, storage, synthetic
+from ai_sentinel import engine, remediation, storage, synthetic, verification
 
 DB_PATH = os.environ.get(
     "SENTINEL_DB_PATH", str(Path(__file__).resolve().parent.parent.parent / "sentinel.db")
@@ -105,7 +105,12 @@ def api_traces(limit: int = 20):
 
 @app.get("/api/incidents")
 def api_incidents(status: str | None = None):
-    return storage.list_incidents(DB_PATH, status=status)
+    incidents = storage.list_incidents(DB_PATH, status=status)
+    for inc in incidents:
+        run = storage.latest_remediation_run(DB_PATH, inc["id"])
+        if run:
+            inc["remediation_run"] = run
+    return incidents
 
 
 @app.post("/api/incidents/{incident_id}/action")
@@ -126,7 +131,12 @@ async def api_incident_action(incident_id: int, req: IncidentAction):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"remediation failed: {exc}")
 
-    storage.update_incident_status(DB_PATH, incident_id, "remediated")
+    # Don't mark this "done" yet — kick off verification in the background (probing + comparing
+    # + possible rollback takes a while) and let the dashboard poll for the outcome.
+    storage.update_incident_status(DB_PATH, incident_id, "verifying")
+    asyncio.create_task(
+        verification.verify_and_rollback_if_needed(incident_id, req.action, DEMO_URL, DB_PATH)
+    )
     return {"incident": storage.get_incident(DB_PATH, incident_id), "demo_service_state": result}
 
 

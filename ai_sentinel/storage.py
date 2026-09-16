@@ -52,6 +52,20 @@ CREATE TABLE IF NOT EXISTS incidents (
     resolved_ts REAL
 );
 CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
+
+CREATE TABLE IF NOT EXISTS remediation_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    before_value REAL,
+    after_value REAL,
+    started_at REAL NOT NULL,
+    finished_at REAL,
+    outcome TEXT NOT NULL DEFAULT 'verifying',
+    detail TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_remediation_runs_incident ON remediation_runs(incident_id);
 """
 
 
@@ -320,3 +334,37 @@ def update_incident_status(db_path: str, incident_id: int, status: str) -> None:
             "UPDATE incidents SET status = ?, resolved_ts = ? WHERE id = ?",
             (status, time.time() if status != "open" else None, incident_id),
         )
+
+
+# ------------------------------------------------------------ remediation runs --
+
+def create_remediation_run(
+    db_path: str, *, incident_id: int, action: str, metric: str, before_value: float, started_at: float
+) -> int:
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            """INSERT INTO remediation_runs
+               (incident_id, action, metric, before_value, started_at, outcome)
+               VALUES (?, ?, ?, ?, ?, 'verifying')""",
+            (incident_id, action, metric, before_value, started_at),
+        )
+        return cur.lastrowid
+
+
+def finish_remediation_run(
+    db_path: str, run_id: int, *, after_value: float, outcome: str, detail: str
+) -> None:
+    with _connect(db_path) as conn:
+        conn.execute(
+            "UPDATE remediation_runs SET after_value = ?, outcome = ?, detail = ?, finished_at = ? WHERE id = ?",
+            (after_value, outcome, detail, time.time(), run_id),
+        )
+
+
+def latest_remediation_run(db_path: str, incident_id: int) -> dict | None:
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM remediation_runs WHERE incident_id = ? ORDER BY id DESC LIMIT 1",
+            (incident_id,),
+        ).fetchone()
+        return dict(row) if row else None

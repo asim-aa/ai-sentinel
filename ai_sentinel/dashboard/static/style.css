@@ -165,7 +165,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .incident-card.critical { border-left-color: var(--red); }
 .incident-card.warning { border-left-color: var(--amber); }
-.incident-card.remediated { opacity: 0.55; }
+.incident-card.verified { opacity: 0.6; }
+.incident-card.rolled_back { opacity: 0.85; }
 .incident-card.ignored { opacity: 0.4; }
 
 .incident-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
@@ -176,13 +177,38 @@ button:disabled { opacity: 0.4; cursor: default; }
 .incident-summary { font-weight: 600; margin: 6px 0 4px; }
 .incident-cause { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
 .incident-cause .confidence { color: var(--text); font-family: var(--mono); }
-.incident-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.incident-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .incident-status-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+.incident-status-label.verifying { color: var(--blue); }
 .evidence {
   margin-top: 8px; font-family: var(--mono); font-size: 11px; color: var(--text-dim);
   background: var(--panel-2); border-radius: 6px; padding: 8px; white-space: pre-wrap; display: none;
 }
 .evidence.open { display: block; }
+
+.verification {
+  margin-top: 10px; padding: 9px 12px; border-radius: 8px; font-size: 12px;
+}
+.verification.pending {
+  background: var(--panel-2); color: var(--text-dim); display: flex; align-items: center; gap: 8px;
+}
+.verification.verified { background: rgba(63, 214, 122, 0.08); border: 1px solid rgba(63, 214, 122, 0.3); }
+.verification.rolled_back { background: rgba(245, 85, 108, 0.08); border: 1px solid rgba(245, 85, 108, 0.3); }
+.verdict {
+  font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  display: block; margin-bottom: 4px;
+}
+.verdict.ok { color: var(--green); }
+.verdict.bad { color: var(--red); }
+.metric-compare { font-family: var(--mono); font-size: 12px; }
+.verification-detail { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+.spinner {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  border: 2px solid var(--border); border-top-color: var(--blue);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .empty { color: var(--text-dim); font-size: 13px; padding: 12px 0; }
 

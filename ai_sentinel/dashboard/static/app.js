@@ -15,6 +15,18 @@ const METRIC_TILES = [
   { key: "avg_tokens", label: "Avg tokens/req", fmt: v => Math.round(v) },
 ];
 
+const METRIC_FMT = {
+  p95_ms: v => Math.round(v) + "ms",
+  error_rate: v => (v * 100).toFixed(0) + "%",
+  timeout_rate: v => (v * 100).toFixed(0) + "%",
+  invalid_output_rate: v => (v * 100).toFixed(0) + "%",
+  avg_tokens: v => Math.round(v),
+};
+function fmtMetric(metric, value) {
+  const fn = METRIC_FMT[metric];
+  return fn ? fn(value ?? 0) : String(Math.round((value ?? 0) * 100) / 100);
+}
+
 const ACTION_LABELS = {
   "Fail over to backup backend": "fail_over",
   "Disable retrieval": "disable_retrieval",
@@ -139,10 +151,35 @@ function renderIncidents(list) {
         }
         actions.push(`<button data-incident="${inc.id}" data-action="ignore">Ignore</button>`);
         actions.push(`<button class="ghost" data-toggle-evidence="${inc.id}">Investigate</button>`);
+      } else if (inc.status === "verifying") {
+        actions.push(`<span class="incident-status-label verifying">verifying…</span>`);
       } else {
         actions.push(`<span class="incident-status-label">${inc.status}</span>`);
         actions.push(`<button class="ghost" data-toggle-evidence="${inc.id}">Details</button>`);
       }
+
+      let verificationHtml = "";
+      const run = inc.remediation_run;
+      if (run) {
+        if (inc.status === "verifying") {
+          verificationHtml = `<div class="verification pending">
+            <span class="spinner"></span>
+            <span>Executed "${escapeHtml(run.action)}" — sending test traffic and comparing ${escapeHtml(run.metric)}…</span>
+          </div>`;
+        } else if (inc.status === "verified" || inc.status === "rolled_back") {
+          const before = fmtMetric(run.metric, run.before_value);
+          const after = fmtMetric(run.metric, run.after_value != null ? run.after_value : run.before_value);
+          const verdict = inc.status === "verified"
+            ? `<span class="verdict ok">VERIFIED RECOVERY</span>`
+            : `<span class="verdict bad">DIDN'T HELP — ROLLED BACK</span>`;
+          verificationHtml = `<div class="verification ${inc.status}">
+            ${verdict}
+            <span class="metric-compare">${escapeHtml(run.metric)}: <strong>${before}</strong> → <strong>${after}</strong></span>
+            <div class="verification-detail">${escapeHtml(run.detail || "")}</div>
+          </div>`;
+        }
+      }
+
       const evidenceOpen = expanded.evidence.has(String(inc.id)) ? " open" : "";
       return `
       <div class="incident-card ${inc.severity} ${inc.status}">
@@ -153,6 +190,7 @@ function renderIncidents(list) {
         <div class="incident-summary">${escapeHtml(inc.summary)}</div>
         <div class="incident-cause">${escapeHtml(inc.root_cause || "")} <span class="confidence">(${Math.round((inc.confidence || 0) * 100)}% confidence)</span></div>
         <div class="incident-actions">${actions.join("")}</div>
+        ${verificationHtml}
         <div class="evidence${evidenceOpen}" id="evidence-${inc.id}">recommended action: ${escapeHtml(inc.recommended_action || "none")}</div>
       </div>`;
     })
