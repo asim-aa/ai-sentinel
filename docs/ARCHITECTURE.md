@@ -179,3 +179,44 @@ still-fresh "before" probes, silently re-including pre-fix latency in the post-f
 that had genuinely worked live came back `failing` on replay). Each phase now gets its own tightly
 scoped window (`max(0.5, elapsed_since_that_phase_started)`) instead of sharing one floor — the
 kind of bug that only shows up once you actually run the thing, not by reading the diff.
+
+## 9. Blind fault-injection eval
+
+Regression replay (§8) checks "does a *known* fix still work" — it never questions whether the
+original diagnosis was right. `ai_sentinel/blind_eval.py` checks that directly: pick a fault at
+random, inject it, and see whether detection + diagnosis name the right pipeline stage — without
+either of them ever being told which fault was chosen. `FAULT_EXPECTATIONS` maps each of the five
+injectable fault modes to the specific detector function expected to notice it and the stage
+`rootcause.diagnose()` should name once it does (`slow_llm`/`llm_errors` → `llm_call`,
+`vector_db_slow` → `retrieval`, `tool_failure` → `tool_call`, `malformed_output` → `llm_call`).
+Each trial scores one of four outcomes — `correct`, `wrong_stage`, `inconclusive` (detector fired,
+diagnosis couldn't attribute a stage), or `not_detected` (detector never fired at all) — persisted
+per-run to a new `blind_eval_runs` table (one row per full batch, trials as a JSON list, same
+pattern `canary_result` already uses for structured-data-in-a-column).
+
+`malformed_output` stays in the fault pool even though it's expected to score `inconclusive` on
+every trial: it corrupts response text without marking any span `ERROR`, so the generic per-stage
+error-rate comparison in `rootcause.py`'s `diagnose()` (§4) has no per-stage signal to compare —
+excluding it would inflate the reported accuracy past what the system actually does. This is a
+known, real gap, not a bug in the eval; closing it would mean giving `invalid_output_rate` its own
+attribution path the way `tool_failure_rate` and `cost_spike` already have one.
+
+**Trial isolation is the whole design problem here**, and the first live run caught it the hard
+way: `detectors.py`'s recent/baseline windows are fixed, global rolling windows over all
+`chat_request` traffic, not scoped to any one trial. Running trials back-to-back left one trial's
+traffic still inside the *next* trial's 90-second "recent" window — a completely unrelated,
+non-error request mixed into the denominator dilutes a genuine error-rate spike below the
+significance threshold. Concretely: a live `llm_errors` trial that should have shown a clean
+~70% recent error rate came back diluted to ~22% by two earlier trials' clean traffic still
+sitting in the same window, just under the `top_dev <= 1.3` significance floor in `rootcause.py`
+→ scored `inconclusive` instead of `correct`, twice in a row.
+
+The fix is **not** a narrower or eval-specific detection window — building one would mean testing
+a different code path than the one real incidents actually go through, defeating the eval's
+purpose. Instead, `run_blind_eval` spaces trials apart by `INTER_TRIAL_GAP_S`
+(`RECENT_WINDOW_S + 10` ≈ 100s) so each trial's own traffic has fully aged out of the *next*
+trial's recent window before that one starts, and picks fault modes from a shuffled full pass
+(`_shuffled_fault_cycle`) rather than uniform random-with-replacement, so the (now expensive) 5
+default trials guarantee coverage of every fault type instead of risking wasted repeats. End to
+end this costs a genuine ~10 minutes (a 95s warm-up plus 4 gaps at ~100s each) — slow on purpose,
+in exchange for testing the exact same windowed detection a real incident goes through.

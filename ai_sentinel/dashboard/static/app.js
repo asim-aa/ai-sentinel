@@ -256,6 +256,45 @@ function renderRegressions(list) {
     .join("");
 }
 
+function renderBlindEvalRuns(runs) {
+  const el = document.getElementById("blind-eval-list");
+  const summaryEl = document.getElementById("blind-eval-summary");
+
+  if (!runs.length) {
+    summaryEl.textContent = "";
+    el.innerHTML = '<div class="empty">No blind eval runs yet.</div>';
+    return;
+  }
+
+  const latest = runs[0];
+  summaryEl.textContent = `${Math.round(latest.accuracy * 100)}% correct (latest, ${latest.trial_count} trials)`;
+
+  el.innerHTML = runs
+    .map(run => {
+      const time = new Date(run.ts * 1000).toLocaleString();
+      const trialRows = run.trials
+        .map(t => {
+          const cls = t.outcome === "correct" ? "ok" : t.outcome === "inconclusive" ? "warn" : "bad";
+          const diagnosed = t.diagnosed_stage || "(inconclusive)";
+          return `<div class="blind-eval-trial">
+            <span class="badge ${cls}"></span>
+            <span class="trial-fault">${escapeHtml(t.fault_mode)}</span>
+            <span class="trial-arrow">→</span>
+            <span>expected ${escapeHtml(t.expected_stage)}, diagnosed ${escapeHtml(diagnosed)}</span>
+          </div>`;
+        })
+        .join("");
+      return `<div class="regression-card">
+        <div class="incident-top">
+          <span class="sev">${time}</span>
+          <span class="regression-status">${run.counts.correct}/${run.trial_count} correct (${Math.round(run.accuracy * 100)}%)</span>
+        </div>
+        ${trialRows}
+      </div>`;
+    })
+    .join("");
+}
+
 function renderTraces(list) {
   const el = document.getElementById("trace-list");
   if (!list.length) {
@@ -295,13 +334,14 @@ function renderTraces(list) {
 
 async function refresh() {
   try {
-    const [health, metrics, incidents, traces, faultState, regressions] = await Promise.all([
+    const [health, metrics, incidents, traces, faultState, regressions, blindEvalRuns] = await Promise.all([
       fetchJSON("/api/health"),
       fetchJSON("/api/metrics?window=300"),
       fetchJSON("/api/incidents"),
       fetchJSON("/api/traces?limit=15"),
       fetchJSON("/api/fault-state"),
       fetchJSON("/api/regressions"),
+      fetchJSON("/api/blind-eval/runs"),
     ]);
     renderHealth(health);
     renderMetrics(metrics);
@@ -309,6 +349,7 @@ async function refresh() {
     renderTraces(traces);
     renderControls(faultState);
     renderRegressions(regressions);
+    renderBlindEvalRuns(blindEvalRuns);
   } catch (err) {
     console.error("refresh failed", err);
   }
@@ -352,6 +393,19 @@ document.addEventListener("DOMContentLoaded", () => {
       } finally {
         t.disabled = false;
         t.textContent = "Run regression suite";
+        refresh();
+      }
+    } else if (t.id === "run-blind-eval-btn") {
+      t.disabled = true;
+      const original = t.textContent;
+      t.textContent = "Running blind eval… (~10 min: a 95s warm-up, then each fault trial spaced apart on purpose)";
+      try {
+        await postJSON("/api/blind-eval/run", {});
+      } catch (err) {
+        console.error("blind eval failed", err);
+      } finally {
+        t.disabled = false;
+        t.textContent = original;
         refresh();
       }
     }

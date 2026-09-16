@@ -78,6 +78,19 @@
   </section>
 
   <section>
+    <h2>Blind fault-injection eval <span style="text-transform:none;color:var(--text-dim)">(does root-cause actually get it right?)</span></h2>
+    <div class="panel control-row">
+      <div class="control-group">
+        <div class="btn-row">
+          <button id="run-blind-eval-btn" class="primary">Run blind eval (~10 min, one trial per fault type)</button>
+          <span id="blind-eval-summary" class="regression-summary"></span>
+        </div>
+      </div>
+    </div>
+    <div class="blind-eval-list" id="blind-eval-list"><div class="empty">No blind eval runs yet.</div></div>
+  </section>
+
+  <section>
     <h2>Trace explorer <span style="text-transform:none;color:var(--text-dim)">(most recent requests)</span></h2>
     <div class="trace-list" id="trace-list"><div class="empty">No traces yet — send a test request.</div></div>
   </section>

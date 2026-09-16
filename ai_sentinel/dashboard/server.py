@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ai_sentinel import engine, regression, remediation, storage, synthetic, verification
+from ai_sentinel import blind_eval, engine, regression, remediation, storage, synthetic, verification
 
 DB_PATH = os.environ.get(
     "SENTINEL_DB_PATH", str(Path(__file__).resolve().parent.parent.parent / "sentinel.db")
@@ -154,6 +154,16 @@ def api_regressions():
 async def api_run_regressions():
     results = await regression.run_regression_suite(DB_PATH, DEMO_URL)
     return {"results": results}
+
+
+@app.get("/api/blind-eval/runs")
+def api_blind_eval_runs(limit: int = 10):
+    return storage.list_blind_eval_runs(DB_PATH, limit=limit)
+
+
+@app.post("/api/blind-eval/run")
+async def api_run_blind_eval(trials: int = blind_eval.DEFAULT_TRIAL_COUNT):
+    return await blind_eval.run_blind_eval(DB_PATH, DEMO_URL, trial_count=trials)
 
 
 @app.get("/api/fault-state")

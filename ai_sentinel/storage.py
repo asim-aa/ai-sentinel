@@ -90,6 +90,16 @@ CREATE TABLE IF NOT EXISTS regressions (
     last_run_detail TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_regressions_signature ON regressions(detector, stage);
+
+CREATE TABLE IF NOT EXISTS blind_eval_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    trial_count INTEGER NOT NULL,
+    accuracy REAL NOT NULL,
+    counts TEXT NOT NULL,
+    trials TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_blind_eval_runs_ts ON blind_eval_runs(ts);
 """
 
 
@@ -508,3 +518,30 @@ def record_regression_run(db_path: str, regression_id: int, *, passed: bool | No
             "UPDATE regressions SET last_run_at = ?, last_run_passed = ?, last_run_detail = ? WHERE id = ?",
             (time.time(), None if passed is None else int(passed), detail, regression_id),
         )
+
+
+# ------------------------------------------------------------- blind eval runs --
+
+def record_blind_eval_run(
+    db_path: str, *, ts: float, trial_count: int, accuracy: float, counts: dict, trials: list[dict]
+) -> int:
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            "INSERT INTO blind_eval_runs (ts, trial_count, accuracy, counts, trials) VALUES (?, ?, ?, ?, ?)",
+            (ts, trial_count, accuracy, json.dumps(counts), json.dumps(trials)),
+        )
+        return cur.lastrowid
+
+
+def list_blind_eval_runs(db_path: str, limit: int = 10) -> list[dict]:
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM blind_eval_runs ORDER BY ts DESC LIMIT ?", (limit,)
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["counts"] = json.loads(d["counts"])
+            d["trials"] = json.loads(d["trials"])
+            out.append(d)
+        return out

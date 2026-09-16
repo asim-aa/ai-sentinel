@@ -149,6 +149,32 @@ naturally over minutes, which would make "run the suite" impractical as a button
 already has its own coverage in `test_detectors.py` / `test_rootcause.py` with seeded spans; a
 regression replay is a fast, deterministic check that a fix that used to work still works.
 
+## Blind fault-injection eval
+
+Regression replay checks "does a *known* fix still work." This checks something more
+fundamental: **does root-cause diagnosis actually get it right**, tested honestly rather than
+assumed. Click **Run blind eval** and `ai_sentinel/blind_eval.py` injects a real fault — chosen
+by the eval, never told to `detectors.py` or `rootcause.py`, which only ever see spans, same as a
+real incident — then checks whether the system both noticed it *and* named the correct pipeline
+stage. One trial per known fault type per run (`slow_llm`, `llm_errors`, `malformed_output`,
+`vector_db_slow`, `tool_failure`), each scored `correct` / `wrong_stage` / `inconclusive` /
+`not_detected` before the actual fault is revealed and compared.
+
+This takes **~10 minutes**, on purpose: each trial is separated by a full rolling-window's worth
+of real wait time, because the alternative — running trials back to back — lets one trial's
+traffic dilute the next one's error-rate signal in the shared 90-second detection window and
+silently understates accuracy. That's not a hypothetical: it's exactly what happened on the first
+live run of this eval, where a fault that should have scored `correct` came back `inconclusive`
+twice because the previous trial's clean, unrelated traffic was still sitting in the same window.
+Fixed by spacing trials apart instead of narrowing the detection window just for the eval — the
+whole point is testing the *real*, unmodified detection path, not a faster stand-in for it.
+
+`malformed_output` is deliberately included in the fault pool even though it's expected to score
+`inconclusive` every time: it corrupts response text without ever marking a span `ERROR`, so the
+generic per-stage error-rate comparison in `rootcause.py` has nothing to point at yet. Excluding
+it would make the reported accuracy look better than the system actually is — the eval's whole
+value is in reporting that honestly rather than curating away the parts that don't look good.
+
 ## Testing
 
 ```bash
@@ -179,6 +205,7 @@ ai_sentinel/          the reliability engine
   pricing.py           per-provider $/token rates -> real cost estimates
   canary.py            shadow-probes both backends before a fail-over recommendation
   regression.py        turns a verified fix into a replayable regression fixture
+  blind_eval.py        honest accuracy eval: injects an unlabeled fault, scores the diagnosis
   alerts.py            structured logging + Slack + generic webhook delivery
   engine.py            ties detect -> diagnose -> correlate -> recommend -> canary -> alert together
   dashboard/           API + static UI

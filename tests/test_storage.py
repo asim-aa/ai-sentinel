@@ -229,3 +229,40 @@ def test_merge_detector_into_incident_appends_without_duplicating(tmp_path):
 
     incident = storage.get_incident(db, incident_id)
     assert incident["merged_detectors"] == "latency_spike,error_rate_spike,cost_spike"
+
+
+def test_record_blind_eval_run_round_trips_nested_data(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    trials = [
+        {"fault_mode": "tool_failure", "expected_stage": "tool_call", "diagnosed_stage": "tool_call", "outcome": "correct"},
+        {"fault_mode": "slow_llm", "expected_stage": "llm_call", "diagnosed_stage": None, "outcome": "not_detected"},
+    ]
+    counts = {"correct": 1, "wrong_stage": 0, "inconclusive": 0, "not_detected": 1}
+
+    run_id = storage.record_blind_eval_run(
+        db, ts=time.time(), trial_count=2, accuracy=0.5, counts=counts, trials=trials,
+    )
+
+    runs = storage.list_blind_eval_runs(db)
+    assert len(runs) == 1
+    assert runs[0]["id"] == run_id
+    assert runs[0]["accuracy"] == 0.5
+    assert runs[0]["counts"] == counts
+    assert runs[0]["trials"] == trials
+
+
+def test_list_blind_eval_runs_orders_newest_first_and_respects_limit(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    now = time.time()
+    for i in range(3):
+        storage.record_blind_eval_run(
+            db, ts=now + i, trial_count=1, accuracy=1.0,
+            counts={"correct": 1, "wrong_stage": 0, "inconclusive": 0, "not_detected": 0},
+            trials=[{"fault_mode": "slow_llm", "expected_stage": "llm_call", "diagnosed_stage": "llm_call", "outcome": "correct"}],
+        )
+
+    runs = storage.list_blind_eval_runs(db, limit=2)
+    assert len(runs) == 2
+    assert runs[0]["ts"] > runs[1]["ts"]
