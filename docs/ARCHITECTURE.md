@@ -148,3 +148,34 @@ make a new kind of decision on their own, they make the existing decisions bette
   incident and rendered as an `Expected: ...` line on the card. This never runs on a merge, and it
   never flips the backend for longer than the probe itself takes — it's a comparison, not a
   commitment, matching the "co-pilot, not autopilot" rule everywhere else in this system.
+
+## 8. Regression memory
+
+The loop up to here ends at `verified` or `rolled_back` (§5) and stops — nothing about *why* a fix
+worked outlives the incident. `ai_sentinel/regression.py` closes that gap: the moment
+`verification.py` marks an incident `verified`, `regression.record_regression` captures its
+failure signature and the fix that resolved it as a row in a new `regressions` table, keyed by
+`(detector, stage)` — a later verified fix for the same signature **replaces** the earlier row
+(`storage.upsert_regression`, an `ON CONFLICT ... DO UPDATE`), so the corpus reflects the current
+best-known fix rather than growing forever on a long-running deployment. `fault_mode` is inferred
+after the fact, not passed in explicitly: `_infer_fault_mode` reads the `fault_mode` attribute off
+whichever span sits closest to the incident's own timestamp.
+
+**Replay** (`regression.replay_regression`, triggered from the dashboard's "Run regression suite"
+button → `POST /api/regressions/run` → `run_regression_suite`, which iterates every stored row) is
+a fast, deterministic re-run of just the fault → fix → verify half of the loop — not full live
+re-detection, which needs the detectors' rolling baseline to age in naturally over minutes and
+would make a "run the suite" button impractical. For each regression: set the recorded
+`fault_mode`, send probes, measure "before"; execute the recorded `action`; send probes, measure
+"after"; run the *same* `measure()`/`decide()` pair live verification uses, so a stored fix is
+judged exactly the way a fresh one would be. The demo service's original state (fault mode,
+backend, retrieval/tools toggles) is always restored in a `finally`, even if the fix throws.
+
+One measurement detail worth calling out because it broke on the first live run: unlike live
+verification, replay has **no pre-existing organic history** to lean on for either window — both
+"before" and "after" are probes sent back-to-back inside the same call. Reusing live verification's
+shared `max(5.0, elapsed)` window floor let the "after" window's minimum reach backward into the
+still-fresh "before" probes, silently re-including pre-fix latency in the post-fix reading (a fix
+that had genuinely worked live came back `failing` on replay). Each phase now gets its own tightly
+scoped window (`max(0.5, elapsed_since_that_phase_started)`) instead of sharing one floor — the
+kind of bug that only shows up once you actually run the thing, not by reading the diff.

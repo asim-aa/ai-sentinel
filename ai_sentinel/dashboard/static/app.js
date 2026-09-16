@@ -227,6 +227,35 @@ function renderIncidents(list) {
     .join("");
 }
 
+function renderRegressions(list) {
+  const el = document.getElementById("regression-list");
+  const passed = list.filter(r => r.last_run_passed === 1).length;
+  const ran = list.filter(r => r.last_run_passed !== null && r.last_run_passed !== undefined).length;
+  document.getElementById("regression-summary").textContent = ran ? `${passed} / ${ran} passing` : "";
+
+  if (!list.length) {
+    el.innerHTML = '<div class="empty">No regressions recorded yet — a remediation has to verify successfully first.</div>';
+    return;
+  }
+  el.innerHTML = list
+    .map(r => {
+      const badgeClass = r.last_run_passed === null || r.last_run_passed === undefined
+        ? "pending" : r.last_run_passed ? "ok" : "bad";
+      const badgeText = r.last_run_passed === null || r.last_run_passed === undefined
+        ? "never run" : r.last_run_passed ? "passing" : "failing";
+      return `<div class="regression-card">
+        <div class="incident-top">
+          <span class="sev">${escapeHtml(r.detector)}${r.stage ? " · " + escapeHtml(r.stage) : ""}</span>
+          <span class="regression-status"><span class="badge ${badgeClass}"></span>${badgeText}</span>
+        </div>
+        <div class="incident-summary">${escapeHtml(r.summary || "")}</div>
+        <div class="incident-cause">fix: ${escapeHtml(r.action)} · fault: ${escapeHtml(r.fault_mode || "unknown")}</div>
+        ${r.last_run_detail ? `<div class="regression-detail">${escapeHtml(r.last_run_detail)}</div>` : ""}
+      </div>`;
+    })
+    .join("");
+}
+
 function renderTraces(list) {
   const el = document.getElementById("trace-list");
   if (!list.length) {
@@ -266,18 +295,20 @@ function renderTraces(list) {
 
 async function refresh() {
   try {
-    const [health, metrics, incidents, traces, faultState] = await Promise.all([
+    const [health, metrics, incidents, traces, faultState, regressions] = await Promise.all([
       fetchJSON("/api/health"),
       fetchJSON("/api/metrics?window=300"),
       fetchJSON("/api/incidents"),
       fetchJSON("/api/traces?limit=15"),
       fetchJSON("/api/fault-state"),
+      fetchJSON("/api/regressions"),
     ]);
     renderHealth(health);
     renderMetrics(metrics);
     renderIncidents(incidents);
     renderTraces(traces);
     renderControls(faultState);
+    renderRegressions(regressions);
   } catch (err) {
     console.error("refresh failed", err);
   }
@@ -313,6 +344,16 @@ document.addEventListener("DOMContentLoaded", () => {
       t.disabled = false;
       t.textContent = "Send 5 test requests";
       refresh();
+    } else if (t.id === "run-regressions-btn") {
+      t.disabled = true;
+      t.textContent = "Running…";
+      try {
+        await postJSON("/api/regressions/run", {});
+      } finally {
+        t.disabled = false;
+        t.textContent = "Run regression suite";
+        refresh();
+      }
     }
   });
 });

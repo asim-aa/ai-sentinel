@@ -130,6 +130,25 @@ Four things the engine does beyond raise-and-recommend:
   auto-triggers off it, matching the "co-pilot, not autopilot" stance everywhere else in this
   system — a human still clicks Fail Over.
 
+## Regression memory
+
+Once a remediation verifies as `verified` (see below), it's automatically captured as a
+**regression** (`ai_sentinel/regression.py`) — a reusable record of "this fault, this fix, this
+metric recovered." One row per `(detector, stage)` signature: a later verified fix for the same
+signature replaces the earlier one, so the corpus stays a *current* known-good playbook rather than
+an ever-growing incident log (the `incidents` table is already that).
+
+Click **Run regression suite** on the dashboard and each stored regression gets replayed for real:
+re-inject the same fault (`fault_mode`, inferred from the incident's own spans), re-apply the same
+fix, and check the same metric actually recovers — against whatever code is running *right now*.
+A fix that used to work but silently broke after a later change shows up as `failing`, not `passing`.
+
+This is deliberately scoped to the deterministic half of the loop (fault → fix → verify), not full
+live re-detection — re-deriving a diagnosis needs the detectors' rolling baseline to age in
+naturally over minutes, which would make "run the suite" impractical as a button. Live detection
+already has its own coverage in `test_detectors.py` / `test_rootcause.py` with seeded spans; a
+regression replay is a fast, deterministic check that a fix that used to work still works.
+
 ## Testing
 
 ```bash
@@ -159,6 +178,7 @@ ai_sentinel/          the reliability engine
   version.py           resolves the running git SHA/VERSION file + process start time
   pricing.py           per-provider $/token rates -> real cost estimates
   canary.py            shadow-probes both backends before a fail-over recommendation
+  regression.py        turns a verified fix into a replayable regression fixture
   alerts.py            structured logging + Slack + generic webhook delivery
   engine.py            ties detect -> diagnose -> correlate -> recommend -> canary -> alert together
   dashboard/           API + static UI

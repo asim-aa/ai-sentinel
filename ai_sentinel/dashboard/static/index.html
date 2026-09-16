@@ -65,6 +65,19 @@
   </section>
 
   <section>
+    <h2>Regression suite <span style="text-transform:none;color:var(--text-dim)">(known-good fixes, replayed on demand)</span></h2>
+    <div class="panel control-row">
+      <div class="control-group">
+        <div class="btn-row">
+          <button id="run-regressions-btn" class="primary">Run regression suite</button>
+          <span id="regression-summary" class="regression-summary"></span>
+        </div>
+      </div>
+    </div>
+    <div class="regression-list" id="regression-list"><div class="empty">No regressions recorded yet — a remediation has to verify successfully first.</div></div>
+  </section>
+
+  <section>
     <h2>Trace explorer <span style="text-transform:none;color:var(--text-dim)">(most recent requests)</span></h2>
     <div class="trace-list" id="trace-list"><div class="empty">No traces yet — send a test request.</div></div>
   </section>

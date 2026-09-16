@@ -41,10 +41,16 @@ def _metric_for(detector: str) -> str:
     return _METRIC_BY_DETECTOR.get(detector, _DEFAULT_METRIC)
 
 
-def _value_for(detector: str, metric: str, summary: dict, tool_stage: dict | None) -> float:
+def measure(db_path: str, detector: str, metric: str, window_s: float, end_ts: float | None = None) -> tuple[float, int]:
+    """Current value of `metric` for `detector` over the trailing `window_s`, plus the sample
+    count it's based on. Shared by live verification (before/after around a real remediation) and
+    regression replay (before/after around a replayed one) so both measure the same way."""
+    now = end_ts if end_ts is not None else time.time()
     if detector == "tool_failure_rate":
-        return tool_stage["error_rate"] if tool_stage else 0.0
-    return summary.get(metric, 0.0)
+        stage = storage.stage_breakdown(db_path, window_s, ("tool_call",), end_ts=now)["tool_call"]
+        return stage["error_rate"], stage["count"]
+    summary = storage.metrics_summary(db_path, window_s, end_ts=now)
+    return summary.get(metric, 0.0), summary["count"]
 
 
 def decide(before_value: float, after_value: float, after_count: int) -> tuple[str, str]:
@@ -80,14 +86,7 @@ async def verify_and_rollback_if_needed(
     detector = incident["detector"]
     metric = _metric_for(detector)
 
-    now = time.time()
-    before_summary = storage.metrics_summary(db_path, RECENT_WINDOW_S, end_ts=now)
-    before_tool = (
-        storage.stage_breakdown(db_path, RECENT_WINDOW_S, ("tool_call",), end_ts=now)["tool_call"]
-        if detector == "tool_failure_rate"
-        else None
-    )
-    before_value = _value_for(detector, metric, before_summary, before_tool)
+    before_value, _ = measure(db_path, detector, metric, RECENT_WINDOW_S, end_ts=time.time())
 
     started_at = time.time()
     run_id = storage.create_remediation_run(
@@ -98,14 +97,7 @@ async def verify_and_rollback_if_needed(
     await _send_probes(demo_url, PROBE_COUNT)
 
     after_window_s = max(5.0, time.time() - started_at)
-    after_summary = storage.metrics_summary(db_path, after_window_s, end_ts=time.time())
-    after_tool = (
-        storage.stage_breakdown(db_path, after_window_s, ("tool_call",), end_ts=time.time())["tool_call"]
-        if detector == "tool_failure_rate"
-        else None
-    )
-    after_value = _value_for(detector, metric, after_summary, after_tool)
-    after_count = after_tool["count"] if after_tool else after_summary["count"]
+    after_value, after_count = measure(db_path, detector, metric, after_window_s, end_ts=time.time())
 
     outcome, detail = decide(before_value, after_value, after_count)
 

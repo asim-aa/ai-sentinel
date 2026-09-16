@@ -156,6 +156,65 @@ def test_open_incident_for_stage_respects_cooldown_window(tmp_path):
     assert storage.open_incident_for_stage(db, "llm_call", cooldown_s=60) is None
 
 
+def test_upsert_regression_creates_then_updates_same_signature(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+
+    first_id = storage.upsert_regression(
+        db, detector="latency_spike", stage="llm_call", fault_mode="slow_llm",
+        summary="p95 latency is 3x baseline", root_cause="LLM call is the outlier stage",
+        action="fail_over", metric="p95_ms", before_value=3500.0, after_value=420.0,
+        source_incident_id=1,
+    )
+    second_id = storage.upsert_regression(
+        db, detector="latency_spike", stage="llm_call", fault_mode="slow_llm",
+        summary="p95 latency is 4x baseline", root_cause="LLM call is the outlier stage",
+        action="fail_over", metric="p95_ms", before_value=4100.0, after_value=410.0,
+        source_incident_id=2,
+    )
+
+    assert first_id == second_id  # same (detector, stage) signature -> updated in place, not duplicated
+    regressions = storage.list_regressions(db)
+    assert len(regressions) == 1
+    assert regressions[0]["summary"] == "p95 latency is 4x baseline"
+    assert regressions[0]["source_incident_id"] == 2
+
+
+def test_upsert_regression_distinct_stage_creates_a_separate_row(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+
+    storage.upsert_regression(
+        db, detector="latency_spike", stage="llm_call", fault_mode="slow_llm",
+        summary="x", root_cause="y", action="fail_over", metric="p95_ms",
+        before_value=3500.0, after_value=420.0, source_incident_id=1,
+    )
+    storage.upsert_regression(
+        db, detector="latency_spike", stage="retrieval", fault_mode="vector_db_slow",
+        summary="x", root_cause="y", action="disable_retrieval", metric="p95_ms",
+        before_value=1400.0, after_value=380.0, source_incident_id=2,
+    )
+
+    assert len(storage.list_regressions(db)) == 2
+
+
+def test_record_regression_run_updates_pass_state(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    reg_id = storage.upsert_regression(
+        db, detector="latency_spike", stage="llm_call", fault_mode="slow_llm",
+        summary="x", root_cause="y", action="fail_over", metric="p95_ms",
+        before_value=3500.0, after_value=420.0, source_incident_id=1,
+    )
+
+    storage.record_regression_run(db, reg_id, passed=True, detail="3500.00 -> 410.00 (improved)")
+    regression = storage.get_regression(db, reg_id)
+
+    assert regression["last_run_passed"] == 1
+    assert regression["last_run_at"] is not None
+    assert "improved" in regression["last_run_detail"]
+
+
 def test_merge_detector_into_incident_appends_without_duplicating(tmp_path):
     db = str(tmp_path / "test.db")
     storage.init_db(db)

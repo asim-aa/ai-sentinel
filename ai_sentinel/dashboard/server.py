@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ai_sentinel import engine, remediation, storage, synthetic, verification
+from ai_sentinel import engine, regression, remediation, storage, synthetic, verification
 
 DB_PATH = os.environ.get(
     "SENTINEL_DB_PATH", str(Path(__file__).resolve().parent.parent.parent / "sentinel.db")
@@ -38,6 +38,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AI Sentinel", lifespan=lifespan)
+
+
+async def _verify_then_record_regression(incident_id: int, action: str, demo_url: str, db_path: str) -> None:
+    await verification.verify_and_rollback_if_needed(incident_id, action, demo_url, db_path)
+    regression.record_regression(db_path, incident_id)  # no-op unless verification just succeeded
 
 
 class IncidentAction(BaseModel):
@@ -135,9 +140,20 @@ async def api_incident_action(incident_id: int, req: IncidentAction):
     # + possible rollback takes a while) and let the dashboard poll for the outcome.
     storage.update_incident_status(DB_PATH, incident_id, "verifying")
     asyncio.create_task(
-        verification.verify_and_rollback_if_needed(incident_id, req.action, DEMO_URL, DB_PATH)
+        _verify_then_record_regression(incident_id, req.action, DEMO_URL, DB_PATH)
     )
     return {"incident": storage.get_incident(DB_PATH, incident_id), "demo_service_state": result}
+
+
+@app.get("/api/regressions")
+def api_regressions():
+    return storage.list_regressions(DB_PATH)
+
+
+@app.post("/api/regressions/run")
+async def api_run_regressions():
+    results = await regression.run_regression_suite(DB_PATH, DEMO_URL)
+    return {"results": results}
 
 
 @app.get("/api/fault-state")

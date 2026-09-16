@@ -70,6 +70,26 @@ CREATE TABLE IF NOT EXISTS remediation_runs (
     detail TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_remediation_runs_incident ON remediation_runs(incident_id);
+
+CREATE TABLE IF NOT EXISTS regressions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    detector TEXT NOT NULL,
+    stage TEXT,
+    fault_mode TEXT,
+    summary TEXT,
+    root_cause TEXT,
+    action TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    before_value REAL,
+    after_value REAL,
+    source_incident_id INTEGER,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    last_run_at REAL,
+    last_run_passed INTEGER,
+    last_run_detail TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_regressions_signature ON regressions(detector, stage);
 """
 
 
@@ -428,3 +448,63 @@ def latest_remediation_run(db_path: str, incident_id: int) -> dict | None:
             (incident_id,),
         ).fetchone()
         return dict(row) if row else None
+
+
+# -------------------------------------------------------------- regressions --
+
+def upsert_regression(
+    db_path: str,
+    *,
+    detector: str,
+    stage: str | None,
+    fault_mode: str | None,
+    summary: str | None,
+    root_cause: str | None,
+    action: str,
+    metric: str,
+    before_value: float | None,
+    after_value: float | None,
+    source_incident_id: int,
+) -> int:
+    """One row per (detector, stage) signature — a later verified fix for the same signature
+    replaces the earlier one, so the corpus reflects the current best-known fix rather than
+    growing forever on a long-running deployment."""
+    now = time.time()
+    with _connect(db_path) as conn:
+        conn.execute(
+            """INSERT INTO regressions
+               (detector, stage, fault_mode, summary, root_cause, action, metric,
+                before_value, after_value, source_incident_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(detector, stage) DO UPDATE SET
+                 fault_mode=excluded.fault_mode, summary=excluded.summary,
+                 root_cause=excluded.root_cause, action=excluded.action, metric=excluded.metric,
+                 before_value=excluded.before_value, after_value=excluded.after_value,
+                 source_incident_id=excluded.source_incident_id, updated_at=excluded.updated_at""",
+            (detector, stage, fault_mode, summary, root_cause, action, metric,
+             before_value, after_value, source_incident_id, now, now),
+        )
+        row = conn.execute(
+            "SELECT id FROM regressions WHERE detector = ? AND stage IS ?", (detector, stage)
+        ).fetchone()
+        return row["id"]
+
+
+def list_regressions(db_path: str) -> list[dict]:
+    with _connect(db_path) as conn:
+        rows = conn.execute("SELECT * FROM regressions ORDER BY updated_at DESC").fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_regression(db_path: str, regression_id: int) -> dict | None:
+    with _connect(db_path) as conn:
+        row = conn.execute("SELECT * FROM regressions WHERE id = ?", (regression_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def record_regression_run(db_path: str, regression_id: int, *, passed: bool | None, detail: str) -> None:
+    with _connect(db_path) as conn:
+        conn.execute(
+            "UPDATE regressions SET last_run_at = ?, last_run_passed = ?, last_run_detail = ? WHERE id = ?",
+            (time.time(), None if passed is None else int(passed), detail, regression_id),
+        )

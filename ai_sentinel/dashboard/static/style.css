@@ -154,7 +154,7 @@ button.primary { background: var(--blue); border-color: var(--blue); color: #fff
 button.ghost { background: transparent; }
 button:disabled { opacity: 0.4; cursor: default; }
 
-.incident-list, .trace-list { display: flex; flex-direction: column; gap: 10px; }
+.incident-list, .trace-list, .regression-list { display: flex; flex-direction: column; gap: 10px; }
 
 .incident-card {
   background: var(--panel);
@@ -191,6 +191,18 @@ button:disabled { opacity: 0.4; cursor: default; }
   background: var(--panel-2); border-radius: 6px; padding: 8px; white-space: pre-wrap; display: none;
 }
 .evidence.open { display: block; }
+
+.regression-summary { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+.regression-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
+}
+.regression-status {
+  display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+}
+.regression-detail {
+  margin-top: 6px; font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+  background: var(--panel-2); border-radius: 6px; padding: 6px 8px;
+}
 
 .verification {
   margin-top: 10px; padding: 9px 12px; border-radius: 8px; font-size: 12px;
