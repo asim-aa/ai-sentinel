@@ -57,10 +57,11 @@ second real provider is a one-line change in `demo_service/llm_client.py`).
    shows the change.
 
 Note on timing: detectors compare a 90-second "recent" window against a 90–990-second-ago
-"baseline" window. If a fault runs long enough (several minutes), it eventually ages into its
-*own* baseline and the detector loses sensitivity — a real property of simple rolling-baseline
-detection, not a bug. Switch back to **normal** for a bit to let a clean baseline re-establish
-if that happens.
+"baseline" window. A fault that runs for several minutes would naively age into its own baseline
+and lose sensitivity — the system now excludes any period already covered by an open or
+recently-resolved incident from that baseline computation (`storage.py::excluded_periods`), so a
+sustained fault keeps getting flagged on later sweeps rather than going quiet. See
+`docs/ARCHITECTURE.md` §4 for how.
 
 ## Testing
 

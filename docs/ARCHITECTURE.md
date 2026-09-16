@@ -68,13 +68,17 @@ noise on a fast stage like `auth` never wins over a genuinely slow one). `cost_s
 `tool_failure_rate` skip that comparison and short-circuit directly to `llm_call` / `tool_call`
 respectively, since only those stages could plausibly cause them.
 
-**A known limitation, by design, not a bug:** if a fault persists long enough (several minutes),
-it eventually ages out of the "recent" window and into "baseline" — at which point the ratio
-drops below threshold and the detector stops flagging it, because the fault has effectively
-become part of its own baseline. Real systems hit the same failure mode with naive rolling
-baselines; a production version would exclude periods with open incidents from baseline
-computation. Not fixed here — it's a fair MVP trade-off, and worth knowing if a fault you inject
-stops showing up in the incident feed after a few minutes.
+**A limitation found during live testing, since fixed:** if a fault persists long enough (several
+minutes), it eventually ages out of the "recent" window and into "baseline" — at which point the
+ratio drops below threshold and a naive detector would stop flagging it, because the fault has
+effectively become part of its own baseline. Real systems hit the same failure mode with naive
+rolling baselines. The fix: `storage.py::excluded_periods` looks up any open or recently-resolved
+incident for that same detector and excludes its estimated time range (from `RECENT_WINDOW_S`
+before it was created through its resolution, or now if still open) from the baseline query —
+both the aggregate one in `detectors.py` and the per-stage one in `rootcause.py`. It's a
+self-referential design (the system excludes its own detected anomalies from its own baseline),
+covered by regression tests in both `tests/test_detectors.py` and `tests/test_rootcause.py` that
+seed a polluted baseline and assert detection fails without an incident row and succeeds with one.
 
 ## 5. Remediation / failover flow
 
