@@ -5,10 +5,15 @@ from ai_sentinel import version
 
 
 def test_service_version_matches_current_checkout():
-    """No VERSION file present in local dev, so this should fall back to the live git SHA."""
-    expected = subprocess.check_output(
-        ["git", "rev-parse", "--short", "HEAD"], cwd=version._ROOT
-    ).decode().strip()
+    """Reflects however this exact checkout resolves: a VERSION file if one was written at deploy
+    time (kolmogorov, rsync'd — no .git there), otherwise the live git SHA (local dev)."""
+    version_file = version._ROOT / "VERSION"
+    if version_file.exists():
+        expected = version_file.read_text().strip()
+    else:
+        expected = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=version._ROOT
+        ).decode().strip()
     assert version.SERVICE_VERSION == expected
 
 
