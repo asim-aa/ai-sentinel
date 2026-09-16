@@ -1,3 +1,4 @@
+import sqlite3
 import time
 
 from ai_sentinel import storage
@@ -84,6 +85,38 @@ def test_update_incident_status_reopens_cleanly(tmp_path):
     assert incident["status"] == "remediated"
     assert incident["resolved_ts"] is not None
     assert storage.open_incident_for_detector(db, "latency_spike") is None
+
+
+def test_init_db_migrates_an_incidents_table_predating_the_new_columns(tmp_path):
+    """Reproduces the real deploy bug this caught: a database created before `stage`,
+    `merged_detectors`, and `canary_result` existed has an `incidents` table that
+    CREATE TABLE IF NOT EXISTS silently skips, so init_db must ALTER it in instead."""
+    db = str(tmp_path / "old.db")
+    conn = sqlite3.connect(db)
+    conn.execute("""CREATE TABLE incidents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts REAL NOT NULL,
+        detector TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        root_cause TEXT,
+        confidence REAL,
+        recommended_action TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        resolved_ts REAL
+    )""")
+    conn.commit()
+    conn.close()
+
+    storage.init_db(db)  # must not raise, and must add the missing columns + index
+
+    incident_id = storage.create_incident(
+        db, detector="latency_spike", severity="warning", summary="x",
+        root_cause="y", confidence=0.5, recommended_action="z", stage="llm_call",
+    )
+    incident = storage.get_incident(db, incident_id)
+    assert incident["stage"] == "llm_call"
+    assert incident["merged_detectors"] == "latency_spike"
 
 
 def test_open_incident_for_stage_finds_recent_open_incident(tmp_path):

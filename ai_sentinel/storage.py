@@ -86,8 +86,29 @@ def _connect(db_path: str):
         conn.close()
 
 
+# Columns added to `incidents` after it may already exist on a deployed database.
+# `CREATE TABLE IF NOT EXISTS` silently no-ops against an existing table, so a new column needs
+# an explicit ALTER here or it never reaches a database that predates it (a fresh dev DB doesn't
+# need this — it gets the column from CREATE TABLE below).
+_INCIDENT_MIGRATIONS = {
+    "stage": "TEXT",
+    "merged_detectors": "TEXT",
+    "canary_result": "TEXT",
+}
+
+
+def _migrate_incidents_table(conn: sqlite3.Connection) -> None:
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(incidents)")}
+    if not existing:
+        return
+    for column, col_type in _INCIDENT_MIGRATIONS.items():
+        if column not in existing:
+            conn.execute(f"ALTER TABLE incidents ADD COLUMN {column} {col_type}")
+
+
 def init_db(db_path: str) -> None:
     with _connect(db_path) as conn:
+        _migrate_incidents_table(conn)
         conn.executescript(SCHEMA)
 
 
