@@ -31,10 +31,18 @@ class RootCause:
     evidence: dict = field(default_factory=dict)
 
 
-def _stage_windows(db_path: str) -> tuple[dict, dict]:
+def _stage_windows(db_path: str, detector: str) -> tuple[dict, dict]:
+    """Same recent-vs-baseline split as detectors._windows, but broken down per pipeline stage
+    instead of aggregated — and with the same baseline-exclusion fix, so a root cause diagnosed
+    on a later sweep of a sustained fault still compares against a clean baseline."""
     now = time.time()
     recent = storage.stage_breakdown(db_path, RECENT_WINDOW_S, STAGES, end_ts=now)
-    baseline = storage.stage_breakdown(db_path, BASELINE_WINDOW_S, STAGES, end_ts=now - RECENT_WINDOW_S)
+    periods = storage.excluded_periods(
+        db_path, BASELINE_WINDOW_S + RECENT_WINDOW_S, detector, anomaly_lead_s=RECENT_WINDOW_S
+    )
+    baseline = storage.stage_breakdown(
+        db_path, BASELINE_WINDOW_S, STAGES, end_ts=now - RECENT_WINDOW_S, exclude_periods=periods
+    )
     return recent, baseline
 
 
@@ -48,10 +56,8 @@ def _inconclusive(recent: dict, baseline: dict) -> RootCause:
 
 
 def diagnose(db_path: str, anomaly: Anomaly) -> RootCause:
-    recent, baseline = _stage_windows(db_path)
-
     if anomaly.detector == "tool_failure_rate":
-        r = recent["tool_call"]
+        r = storage.stage_breakdown(db_path, RECENT_WINDOW_S, ("tool_call",))["tool_call"]
         return RootCause(
             stage="tool_call",
             explanation=(
@@ -59,7 +65,7 @@ def diagnose(db_path: str, anomaly: Anomaly) -> RootCause:
                 f"{RECENT_WINDOW_S}s) — likely a downstream tool/integration issue, not the model itself."
             ),
             confidence=0.9,
-            evidence={"recent": recent},
+            evidence={"recent": r},
         )
 
     if anomaly.detector == "cost_spike":
@@ -77,6 +83,7 @@ def diagnose(db_path: str, anomaly: Anomaly) -> RootCause:
             evidence={"anomaly_evidence": anomaly.evidence},
         )
 
+    recent, baseline = _stage_windows(db_path, anomaly.detector)
     is_latency_metric = anomaly.detector == "latency_spike"
     deviations: dict[str, float] = {}
 

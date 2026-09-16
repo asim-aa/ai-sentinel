@@ -68,6 +68,41 @@ def test_tool_failure_rate_detected_independent_of_root_status(tmp_path):
     assert "tool_failure_rate" in names
 
 
+def test_baseline_pollution_without_exclusion_masks_a_sustained_spike(tmp_path):
+    """Sanity check that the scenario below is a meaningful test of the fix: with no incident
+    row to exclude the fault's own earlier history, that history pollutes the baseline enough
+    that the same ongoing fault stops being detectable. This is the bug found during live
+    testing — a fault sustained long enough eventually ages into its own baseline."""
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+    _seed(db, "chat_request", 6, 300, offset_start=750, spacing=25)  # genuine clean history
+    _seed(db, "chat_request", 6, 3000, offset_start=200, spacing=80)  # the fault's own past
+    _seed(db, "chat_request", 5, 3000, offset_start=10, spacing=8)  # the fault, still ongoing
+
+    assert detectors.detect_latency_spike(db) is None
+
+
+def test_baseline_excludes_periods_covered_by_open_incidents(tmp_path):
+    """Same data as above, but with an already-fired, still-open incident covering the fault's
+    earlier history — the baseline should exclude that period and detect the ongoing spike."""
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+    _seed(db, "chat_request", 6, 300, offset_start=750, spacing=25)
+    _seed(db, "chat_request", 6, 3000, offset_start=200, spacing=80)
+    _seed(db, "chat_request", 5, 3000, offset_start=10, spacing=8)
+
+    storage.create_incident(
+        db, detector="latency_spike", severity="critical",
+        summary="earlier detection", root_cause="x", confidence=0.9,
+        recommended_action="Fail over to backup backend",
+        ts=time.time() - 520,
+    )
+
+    anomaly = detectors.detect_latency_spike(db)
+    assert anomaly is not None
+    assert anomaly.severity == "critical"
+
+
 def test_cost_spike_detected(tmp_path):
     db = str(tmp_path / "t.db")
     storage.init_db(db)

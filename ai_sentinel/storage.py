@@ -150,13 +150,25 @@ def _percentile(values: list[float], pct: float) -> float:
     return s[idx]
 
 
+def _drop_excluded(rows: list[dict], exclude_periods: list[tuple[float, float]] | None) -> list[dict]:
+    """Drop spans that fall inside a known-anomalous period, so a baseline computation
+    doesn't get pulled toward a fault it's supposed to be a clean comparison point for."""
+    if not exclude_periods:
+        return rows
+    return [r for r in rows if not any(s <= r["start_time"] <= e for s, e in exclude_periods)]
+
+
 def stage_breakdown(
-    db_path: str, window_s: float, stage_names: tuple[str, ...], end_ts: float | None = None
+    db_path: str,
+    window_s: float,
+    stage_names: tuple[str, ...],
+    end_ts: float | None = None,
+    exclude_periods: list[tuple[float, float]] | None = None,
 ) -> dict[str, dict]:
     now = end_ts if end_ts is not None else time.time()
     out = {}
     for stage in stage_names:
-        rows = spans_since(db_path, now - window_s, now, name=stage)
+        rows = _drop_excluded(spans_since(db_path, now - window_s, now, name=stage), exclude_periods)
         durations = [r["duration_ms"] for r in rows]
         errors = [r for r in rows if r["status"] == "ERROR"]
         out[stage] = {
@@ -168,9 +180,14 @@ def stage_breakdown(
     return out
 
 
-def metrics_summary(db_path: str, window_s: float, end_ts: float | None = None) -> dict:
+def metrics_summary(
+    db_path: str,
+    window_s: float,
+    end_ts: float | None = None,
+    exclude_periods: list[tuple[float, float]] | None = None,
+) -> dict:
     now = end_ts if end_ts is not None else time.time()
-    rows = spans_since(db_path, now - window_s, now, name="chat_request")
+    rows = _drop_excluded(spans_since(db_path, now - window_s, now, name="chat_request"), exclude_periods)
     durations = [r["duration_ms"] for r in rows]
     errors = [r for r in rows if r["status"] == "ERROR"]
     timeouts = [r for r in rows if r["attributes"].get("error_reason") == "timeout"]
@@ -236,15 +253,38 @@ def create_incident(
     root_cause: str,
     confidence: float,
     recommended_action: str,
+    ts: float | None = None,
 ) -> int:
     with _connect(db_path) as conn:
         cur = conn.execute(
             """INSERT INTO incidents
                (ts, detector, severity, summary, root_cause, confidence, recommended_action, status)
                VALUES (?, ?, ?, ?, ?, ?, ?, 'open')""",
-            (time.time(), detector, severity, summary, root_cause, confidence, recommended_action),
+            (ts if ts is not None else time.time(), detector, severity, summary, root_cause,
+             confidence, recommended_action),
         )
         return cur.lastrowid
+
+
+def excluded_periods(
+    db_path: str, lookback_s: float, detector: str, anomaly_lead_s: float
+) -> list[tuple[float, float]]:
+    """Conservative time ranges to treat as known-anomalous for this detector, so a baseline
+    computation can exclude them instead of being pulled toward a fault that's still ongoing
+    (or only recently stopped). Each incident's range starts `anomaly_lead_s` before it was
+    created — roughly the trigger window that led to it — and ends at resolution, or now if
+    it's still open."""
+    now = time.time()
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            """SELECT ts, resolved_ts, status FROM incidents
+               WHERE detector = ? AND (status = 'open' OR resolved_ts >= ?)""",
+            (detector, now - lookback_s),
+        ).fetchall()
+    return [
+        (r["ts"] - anomaly_lead_s, r["resolved_ts"] if r["status"] != "open" else now)
+        for r in rows
+    ]
 
 
 def open_incident_for_detector(db_path: str, detector: str, cooldown_s: float = 120) -> dict | None:

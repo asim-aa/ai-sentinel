@@ -87,6 +87,46 @@ def test_diagnose_cost_spike_shortcircuits_to_llm_call_stage(tmp_path):
     assert "p95" not in cause.explanation.lower()
 
 
+def test_diagnose_stays_accurate_on_a_later_sweep_of_a_sustained_fault(tmp_path):
+    """Root-cause attribution needs the same baseline-exclusion fix as the detector: on a
+    second detection of a fault that's been running for minutes, its own earlier history has
+    aged into the stage baseline too and would otherwise dilute the deviation ratio."""
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+
+    # genuine clean history, well before the fault started
+    for stage, base_ms in [("auth", 10), ("retrieval", 40), ("llm_call", 350), ("tool_call", 15)]:
+        _seed(db, stage, 6, base_ms, offset_start=850, spacing=20)
+    _seed(db, "chat_request", 6, 10 + 40 + 350 + 15, offset_start=850, spacing=20)
+
+    # the fault's own earlier history, now aged past "recent" into what would be "baseline"
+    for stage, base_ms in [("auth", 10), ("retrieval", 40), ("tool_call", 15)]:
+        _seed(db, stage, 5, base_ms, offset_start=300, spacing=60)
+    _seed(db, "llm_call", 5, 3500, offset_start=300, spacing=60)
+    _seed(db, "chat_request", 5, 10 + 40 + 3500 + 15, offset_start=300, spacing=60)
+
+    # an already-fired, still-open incident covering that earlier stretch
+    storage.create_incident(
+        db, detector="latency_spike", severity="critical",
+        summary="earlier detection", root_cause="x", confidence=0.9,
+        recommended_action="Fail over to backup backend",
+        ts=time.time() - 690,
+    )
+
+    # the fault, still ongoing right now
+    for stage, base_ms in [("auth", 10), ("retrieval", 40), ("tool_call", 15)]:
+        _seed(db, stage, 5, base_ms, offset_start=10, spacing=10)
+    _seed(db, "llm_call", 5, 3500, offset_start=10, spacing=10)
+    _seed(db, "chat_request", 5, 10 + 40 + 3500 + 15, offset_start=10, spacing=10)
+
+    anomaly = detectors.detect_latency_spike(db)
+    assert anomaly is not None, "the detector itself should still fire on this later sweep"
+
+    cause = rootcause.diagnose(db, anomaly)
+    assert cause.stage == "llm_call"
+    assert cause.confidence > 0.5
+
+
 def test_diagnose_inconclusive_when_no_stage_dominates(tmp_path):
     db = str(tmp_path / "t.db")
     storage.init_db(db)

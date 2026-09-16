@@ -25,15 +25,27 @@ class Anomaly:
     evidence: dict = field(default_factory=dict)
 
 
-def _windows(db_path: str) -> tuple[dict, dict]:
+def _recent(db_path: str) -> dict:
+    return storage.metrics_summary(db_path, RECENT_WINDOW_S, end_ts=time.time())
+
+
+def _windows(db_path: str, detector: str) -> tuple[dict, dict]:
+    """Recent vs. baseline, with the baseline excluding any period already covered by an
+    open or recently-resolved incident from this same detector — otherwise a fault that runs
+    long enough eventually ages into its own baseline and stops being flagged."""
     now = time.time()
     recent = storage.metrics_summary(db_path, RECENT_WINDOW_S, end_ts=now)
-    baseline = storage.metrics_summary(db_path, BASELINE_WINDOW_S, end_ts=now - RECENT_WINDOW_S)
+    periods = storage.excluded_periods(
+        db_path, BASELINE_WINDOW_S + RECENT_WINDOW_S, detector, anomaly_lead_s=RECENT_WINDOW_S
+    )
+    baseline = storage.metrics_summary(
+        db_path, BASELINE_WINDOW_S, end_ts=now - RECENT_WINDOW_S, exclude_periods=periods
+    )
     return recent, baseline
 
 
 def detect_latency_spike(db_path: str) -> Anomaly | None:
-    recent, baseline = _windows(db_path)
+    recent, baseline = _windows(db_path, "latency_spike")
     if recent["count"] < MIN_SAMPLES or baseline["count"] < MIN_SAMPLES or baseline["p95_ms"] <= 0:
         return None
     ratio = recent["p95_ms"] / baseline["p95_ms"]
@@ -48,7 +60,7 @@ def detect_latency_spike(db_path: str) -> Anomaly | None:
 
 
 def detect_error_rate_spike(db_path: str) -> Anomaly | None:
-    recent, baseline = _windows(db_path)
+    recent, baseline = _windows(db_path, "error_rate_spike")
     if recent["count"] < MIN_SAMPLES:
         return None
     if recent["error_rate"] < 0.2:
@@ -62,7 +74,7 @@ def detect_error_rate_spike(db_path: str) -> Anomaly | None:
 
 
 def detect_timeout_spike(db_path: str) -> Anomaly | None:
-    recent, baseline = _windows(db_path)
+    recent, baseline = _windows(db_path, "timeout_spike")
     if recent["count"] < MIN_SAMPLES or recent["timeout_rate"] < 0.2:
         return None
     return Anomaly(
@@ -74,7 +86,7 @@ def detect_timeout_spike(db_path: str) -> Anomaly | None:
 
 
 def detect_invalid_output(db_path: str) -> Anomaly | None:
-    recent, baseline = _windows(db_path)
+    recent = _recent(db_path)
     checks = storage.checks_stats(db_path, 300)
     triggered_by = None
     rate = 0.0
@@ -93,7 +105,7 @@ def detect_invalid_output(db_path: str) -> Anomaly | None:
 
 
 def detect_cost_spike(db_path: str) -> Anomaly | None:
-    recent, baseline = _windows(db_path)
+    recent, baseline = _windows(db_path, "cost_spike")
     if recent["count"] < MIN_SAMPLES or baseline["avg_tokens"] <= 0:
         return None
     ratio = recent["avg_tokens"] / baseline["avg_tokens"]
