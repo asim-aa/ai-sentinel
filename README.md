@@ -44,6 +44,22 @@ realistic latency jitter. Set `ANTHROPIC_API_KEY` to route through real `claude-
 calls instead (both "primary" and "backup" use the same model in that mode — swapping in a
 second real provider is a one-line change in `demo_service/llm_client.py`).
 
+## Deploying persistently
+
+For a shared box you don't have root on (e.g. a lab GPU cluster), `deploy/systemd/` installs
+both services as **user-level** systemd units — no sudo, nothing touches `/etc`:
+
+```bash
+rsync -avz --exclude='.venv' --exclude='.git' --exclude='__pycache__' --exclude='.pytest_cache' \
+  --exclude='*.db*' . user@host:~/ai-sentinel/
+ssh user@host 'cd ~/ai-sentinel && uv sync && ./deploy/systemd/install.sh'
+```
+
+The install script enables `loginctl linger` for your user, which is the part that actually makes
+"survives a reboot" true — without it, a user-level systemd service only starts back up once you
+next log in, not at boot. Manage it with the usual `systemctl --user` / `journalctl --user`
+against `ai-sentinel-demo` and `ai-sentinel-engine`.
+
 ## The demo loop
 
 1. Open the dashboard. The health strip should be green within a few seconds (liveness,
@@ -92,7 +108,8 @@ ai_sentinel/          the reliability engine
   engine.py            ties detect -> diagnose -> recommend -> record -> alert together
   dashboard/           API + static UI
 
-scripts/run_demo.sh   starts both processes together
+scripts/run_demo.sh   starts both processes together (local/manual use)
+deploy/systemd/        user-level systemd units + install script (persistent deployment)
 tests/                 pytest suite
 docs/ARCHITECTURE.md   the six-diagram architecture write-up
 ```
@@ -100,5 +117,5 @@ docs/ARCHITECTURE.md   the six-diagram architecture write-up
 ## Deliberately out of scope
 
 Real Slack/email alerting, Docker/an OTel Collector/Prometheus export, a second real model
-provider, LLM-as-judge quality evaluation, and persistent deployment — all reasonable follow-ups,
-none needed to demonstrate the core idea. See `docs/ARCHITECTURE.md` for the full reasoning.
+provider, and LLM-as-judge quality evaluation — all reasonable follow-ups, none needed to
+demonstrate the core idea. See `docs/ARCHITECTURE.md` for the full reasoning.

@@ -1,0 +1,15 @@
+[Unit]
+Description=AI Sentinel - demo AI service (:8000)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/ai-sentinel
+ExecStart=%h/ai-sentinel/.venv/bin/uvicorn demo_service.main:app --host 127.0.0.1 --port 8000 --log-level warning
+Restart=on-failure
+RestartSec=3
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Install]
+WantedBy=default.target

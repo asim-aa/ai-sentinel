@@ -1,0 +1,17 @@
+[Unit]
+Description=AI Sentinel - reliability engine + dashboard (:8500)
+After=network.target ai-sentinel-demo.service
+Wants=ai-sentinel-demo.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/ai-sentinel
+Environment=DEMO_SERVICE_URL=http://127.0.0.1:8000
+ExecStart=%h/ai-sentinel/.venv/bin/uvicorn ai_sentinel.dashboard.server:app --host 127.0.0.1 --port 8500 --log-level warning
+Restart=on-failure
+RestartSec=3
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Install]
+WantedBy=default.target
