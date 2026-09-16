@@ -98,8 +98,10 @@ Every incident carries a recommended action; nothing executes until you click it
 
 `execute()` doesn't hardcode a target — for `fail_over` it reads the demo service's current
 `active_backend` via `GET /admin/state` and flips to whichever one isn't currently active, then
-calls `POST /admin/backend`. The dashboard's `POST /api/incidents/{id}/action` is the trigger;
-the incident is marked `remediated` in the same request.
+calls `POST /admin/backend`. The dashboard's `POST /api/incidents/{id}/action` is the trigger; the
+incident moves to `verifying`, then `verified` or `rolled_back` once `ai_sentinel/verification.py`
+compares the incident's own metric before vs. after and, if it didn't actually improve, calls
+`remediation.rollback()` automatically rather than leaving a false "fixed" on the board.
 
 What "backup" actually *is* depends on what's configured: `demo_service/llm_client.py::make_backends`
 picks providers by availability — with both `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` set, primary
@@ -119,3 +121,30 @@ Separately, `ai_sentinel/dashboard/server.py`'s FastAPI `lifespan` starts the sy
 loop and the detector-sweep loop as `asyncio` background tasks on process boot. They run for the
 life of the process, not the life of a browser connection — closing the dashboard tab doesn't
 pause detection.
+
+## 7. Correlation, cost, deploy-awareness, and canaries
+
+Four additions to `engine.py::sweep_once`, all still informational or merge-only — none of them
+make a new kind of decision on their own, they make the existing decisions better-informed:
+
+- **Cost.** `pipeline.py` tags every `llm_call` span with `model` and `cost_usd`
+  (`ai_sentinel/pricing.py`, a verified $/token table per provider). `storage.py::metrics_summary`
+  rolls these into `avg_cost_usd`/`total_cost_usd`, surfaced as dashboard tiles.
+- **Deployment correlation.** `version.py` resolves `SERVICE_VERSION` (a `VERSION` file at deploy
+  time, else a live `git rev-parse`) and `SERVICE_STARTED_AT` once at import time; both are tagged
+  onto the root `chat_request` span. `rootcause.py::_deployment_note` checks the most recent span
+  against that start time and appends a one-line note to the diagnosis when the restart was
+  within the last two minutes — the same explanation string every other detector path already
+  returns, just with one more sentence when it's relevant.
+- **Incident correlation.** Before creating a new incident, `sweep_once` checks
+  `storage.open_incident_for_stage` for an already-open incident diagnosed to the *same* stage
+  within the last 60s. If found, the new detector's name is appended to that incident's
+  `merged_detectors` (`storage.merge_detector_into_incident`) instead of opening a second card for
+  what's really one problem.
+- **Canary.** Only for a *brand-new* incident whose recommended action is `fail_over`:
+  `canary.py::compare_backends` flips the demo service to the current backend, sends 3 probes,
+  flips to the other backend, sends 3 more, then restores whichever was active originally. The
+  result (`{current, candidate}` avg latency + error rate) is stored as `canary_result` on the
+  incident and rendered as an `Expected: ...` line on the card. This never runs on a merge, and it
+  never flips the backend for longer than the probe itself takes — it's a comparison, not a
+  commitment, matching the "co-pilot, not autopilot" rule everywhere else in this system.

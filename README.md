@@ -105,6 +105,31 @@ Every incident is always logged. To also deliver it somewhere:
 Set either, both, or neither — they're independent, and each delivery is wrapped separately so
 one failing (bad URL, network blip) doesn't block the other. See `ai_sentinel/alerts.py`.
 
+## Cost, correlation, deploy-awareness, and canaries
+
+Four things the engine does beyond raise-and-recommend:
+
+- **Real dollar cost, not just tokens.** Every LLM call is priced against each provider's actual
+  published per-token rate (`ai_sentinel/pricing.py`) and rolled up into `avg_cost_usd` /
+  `total_cost_usd` metric tiles. The mock backend genuinely costs `$0` — there's no fake number to
+  make the tile look alive.
+- **Incident correlation.** Two detectors firing for the same root-cause stage within 60s (e.g.
+  `latency_spike` and `error_rate_spike` both landing on `llm_call`) are almost always one
+  underlying problem — the second gets merged into the first incident (`Signals: ...` on the
+  card) instead of paging on-call twice for it (`storage.py::open_incident_for_stage` /
+  `merge_detector_into_incident`, wired in `engine.py::sweep_once`).
+- **Deployment correlation.** Each span carries the service's version (git SHA, or a `VERSION`
+  file at deploy time) and process-start time. If an incident's root cause is diagnosed shortly
+  after a restart, the explanation says so directly — "the service restarted 90s ago (version
+  ...) — this may be related to that deploy" — instead of leaving a coincidental redeploy for you
+  to notice on your own (`ai_sentinel/rootcause.py::_deployment_note`).
+- **Canary comparison before you commit to a fail-over.** When a *new* incident recommends failing
+  over, the engine shadow-probes both backends (3 requests each) and shows the comparison —
+  `Expected: primary: 441ms avg, 0% err → backup: 500ms avg, 0% err` — right on the incident card,
+  before you click anything (`ai_sentinel/canary.py`). This is informational only: nothing
+  auto-triggers off it, matching the "co-pilot, not autopilot" stance everywhere else in this
+  system — a human still clicks Fail Over.
+
 ## Testing
 
 ```bash
@@ -128,10 +153,14 @@ ai_sentinel/          the reliability engine
   storage.py           schema + queries (spans, synthetic_checks, incidents)
   synthetic.py         periodic functional check
   detectors.py         6 threshold-based failure detectors
-  rootcause.py         per-stage deviation correlator
+  rootcause.py         per-stage deviation correlator + deployment-restart note
   remediation.py       action recommendation + execution
+  verification.py      post-remediation verify + auto-rollback
+  version.py           resolves the running git SHA/VERSION file + process start time
+  pricing.py           per-provider $/token rates -> real cost estimates
+  canary.py            shadow-probes both backends before a fail-over recommendation
   alerts.py            structured logging + Slack + generic webhook delivery
-  engine.py            ties detect -> diagnose -> recommend -> record -> alert together
+  engine.py            ties detect -> diagnose -> correlate -> recommend -> canary -> alert together
   dashboard/           API + static UI
 
 scripts/run_demo.sh   starts both processes together (local/manual use)

@@ -13,6 +13,8 @@ const METRIC_TILES = [
   { key: "timeout_rate", label: "Timeout rate", fmt: v => (v * 100).toFixed(1) + "%", warnAbove: 0.05, badAbove: 0.2 },
   { key: "invalid_output_rate", label: "Invalid output", fmt: v => (v * 100).toFixed(1) + "%", warnAbove: 0.05, badAbove: 0.2 },
   { key: "avg_tokens", label: "Avg tokens/req", fmt: v => Math.round(v) },
+  { key: "avg_cost_usd", label: "Avg cost/req", fmt: v => "$" + v.toFixed(4) },
+  { key: "total_cost_usd", label: "Total cost (window)", fmt: v => "$" + v.toFixed(4) },
 ];
 
 const METRIC_FMT = {
@@ -134,6 +136,25 @@ function renderControls(state) {
     .join("");
 }
 
+function renderCanarySummary(canaryResultJson) {
+  if (!canaryResultJson) return "";
+  let result;
+  try {
+    result = JSON.parse(canaryResultJson);
+  } catch {
+    return "";
+  }
+  const { current, candidate } = result;
+  if (!current || !candidate) return "";
+  const fmtSide = s =>
+    `${escapeHtml(s.backend)}: ${s.avg_latency_ms != null ? Math.round(s.avg_latency_ms) + "ms" : "n/a"} avg, ${Math.round((s.error_rate || 0) * 100)}% err`;
+  const better = (candidate.avg_latency_ms ?? Infinity) < (current.avg_latency_ms ?? Infinity)
+    && candidate.error_rate <= current.error_rate;
+  return `<div class="incident-canary${better ? " favorable" : ""}">
+    Expected: ${fmtSide(current)} → ${fmtSide(candidate)} (${better ? "backup looks better" : "no clear improvement"})
+  </div>`;
+}
+
 function renderIncidents(list) {
   const el = document.getElementById("incident-list");
   if (!list.length) {
@@ -180,6 +201,13 @@ function renderIncidents(list) {
         }
       }
 
+      const signals = (inc.merged_detectors || "").split(",").filter(Boolean);
+      const signalsHtml = signals.length > 1
+        ? `<div class="incident-signals">Signals: ${signals.map(escapeHtml).join(", ")}</div>`
+        : "";
+
+      const canaryHtml = renderCanarySummary(inc.canary_result);
+
       const evidenceOpen = expanded.evidence.has(String(inc.id)) ? " open" : "";
       return `
       <div class="incident-card ${inc.severity} ${inc.status}">
@@ -189,6 +217,8 @@ function renderIncidents(list) {
         </div>
         <div class="incident-summary">${escapeHtml(inc.summary)}</div>
         <div class="incident-cause">${escapeHtml(inc.root_cause || "")} <span class="confidence">(${Math.round((inc.confidence || 0) * 100)}% confidence)</span></div>
+        ${signalsHtml}
+        ${canaryHtml}
         <div class="incident-actions">${actions.join("")}</div>
         ${verificationHtml}
         <div class="evidence${evidenceOpen}" id="evidence-${inc.id}">recommended action: ${escapeHtml(inc.recommended_action || "none")}</div>

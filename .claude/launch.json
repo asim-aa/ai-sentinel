@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ai-sentinel-demo",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["scripts/run_demo.sh"],
+      "port": 8500
+    }
+  ]
+}

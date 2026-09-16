@@ -7,3 +7,4 @@ sentinel.db
 sentinel.db-*
 .env
 .DS_Store
+VERSION

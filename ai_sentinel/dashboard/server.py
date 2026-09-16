@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
     storage.init_db(DB_PATH)
     tasks = [
         asyncio.create_task(synthetic.synthetic_check_loop(DB_PATH, DEMO_URL, SYNTHETIC_INTERVAL_S)),
-        asyncio.create_task(engine.sweep_loop(DB_PATH, SWEEP_INTERVAL_S)),
+        asyncio.create_task(engine.sweep_loop(DB_PATH, DEMO_URL, SWEEP_INTERVAL_S)),
     ]
     yield
     for t in tasks:

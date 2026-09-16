@@ -138,3 +138,47 @@ def test_diagnose_inconclusive_when_no_stage_dominates(tmp_path):
     cause = rootcause.diagnose(db, anomaly)
 
     assert cause.stage is None
+
+
+def _seed_chat_request_with_service_attrs(db, started_at, offset_start=5):
+    t = time.time() - offset_start
+    storage.insert_span(
+        db, span_id=f"chat-{offset_start}", trace_id=f"trace-chat-{offset_start}", parent_id=None,
+        name="chat_request", service_name="demo-ai-service",
+        start_time=t, end_time=t + 0.1, duration_ms=100, status="OK",
+        attributes={"service_started_at": started_at, "service_version": "abc1234"},
+    )
+
+
+def test_diagnose_notes_a_recent_restart(tmp_path):
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+    _seed_chat_request_with_service_attrs(db, started_at=time.time() - 15)
+
+    anomaly = detectors.Anomaly(detector="tool_failure_rate", severity="warning", summary="tools failing")
+    cause = rootcause.diagnose(db, anomaly)
+
+    assert "restarted" in cause.explanation
+    assert "abc1234" in cause.explanation
+
+
+def test_diagnose_does_not_note_a_stale_restart(tmp_path):
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+    _seed_chat_request_with_service_attrs(db, started_at=time.time() - 3600)
+
+    anomaly = detectors.Anomaly(detector="tool_failure_rate", severity="warning", summary="tools failing")
+    cause = rootcause.diagnose(db, anomaly)
+
+    assert "restarted" not in cause.explanation
+
+
+def test_diagnose_does_not_note_when_no_service_attrs_present(tmp_path):
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+    _seed(db, "tool_call", 5, 15, status="ERROR", offset_start=10, spacing=10)
+
+    anomaly = detectors.Anomaly(detector="tool_failure_rate", severity="warning", summary="tools failing")
+    cause = rootcause.diagnose(db, anomaly)
+
+    assert "restarted" not in cause.explanation

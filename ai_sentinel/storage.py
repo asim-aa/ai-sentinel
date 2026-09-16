@@ -49,9 +49,13 @@ CREATE TABLE IF NOT EXISTS incidents (
     confidence REAL,
     recommended_action TEXT,
     status TEXT NOT NULL DEFAULT 'open',
-    resolved_ts REAL
+    resolved_ts REAL,
+    stage TEXT,
+    merged_detectors TEXT,
+    canary_result TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
+CREATE INDEX IF NOT EXISTS idx_incidents_stage ON incidents(stage);
 
 CREATE TABLE IF NOT EXISTS remediation_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -207,6 +211,7 @@ def metrics_summary(
     timeouts = [r for r in rows if r["attributes"].get("error_reason") == "timeout"]
     invalid = [r for r in rows if r["attributes"].get("invalid_output")]
     tokens = [r["attributes"].get("tokens_total") for r in rows if r["attributes"].get("tokens_total")]
+    costs = [r["attributes"].get("cost_usd") for r in rows if r["attributes"].get("cost_usd") is not None]
 
     count = len(rows)
     return {
@@ -220,6 +225,8 @@ def metrics_summary(
         "p95_ms": _percentile(durations, 95),
         "p99_ms": _percentile(durations, 99),
         "avg_tokens": (sum(tokens) / len(tokens)) if tokens else 0.0,
+        "avg_cost_usd": (sum(costs) / len(costs)) if costs else 0.0,
+        "total_cost_usd": sum(costs) if costs else 0.0,
     }
 
 
@@ -268,16 +275,48 @@ def create_incident(
     confidence: float,
     recommended_action: str,
     ts: float | None = None,
+    stage: str | None = None,
+    canary_result: str | None = None,
 ) -> int:
     with _connect(db_path) as conn:
         cur = conn.execute(
             """INSERT INTO incidents
-               (ts, detector, severity, summary, root_cause, confidence, recommended_action, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'open')""",
+               (ts, detector, severity, summary, root_cause, confidence, recommended_action, status,
+                stage, merged_detectors, canary_result)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)""",
             (ts if ts is not None else time.time(), detector, severity, summary, root_cause,
-             confidence, recommended_action),
+             confidence, recommended_action, stage, detector, canary_result),
         )
         return cur.lastrowid
+
+
+def open_incident_for_stage(db_path: str, stage: str | None, cooldown_s: float = 60) -> dict | None:
+    """Finds an already-open incident diagnosed to the same root-cause stage very recently, so a
+    second detector firing for what's really the same underlying problem gets merged into it
+    instead of spawning a separate incident an operator would have to notice are related."""
+    if not stage:
+        return None
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            """SELECT * FROM incidents WHERE stage = ? AND status = 'open'
+               AND ts >= ? ORDER BY ts DESC LIMIT 1""",
+            (stage, time.time() - cooldown_s),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def merge_detector_into_incident(db_path: str, incident_id: int, detector: str) -> None:
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT merged_detectors FROM incidents WHERE id = ?", (incident_id,)
+        ).fetchone()
+        existing = [d for d in (row["merged_detectors"] or "").split(",") if d] if row else []
+        if detector not in existing:
+            existing.append(detector)
+        conn.execute(
+            "UPDATE incidents SET merged_detectors = ? WHERE id = ?",
+            (",".join(existing), incident_id),
+        )
 
 
 def excluded_periods(

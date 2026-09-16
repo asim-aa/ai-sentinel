@@ -14,6 +14,7 @@ from ai_sentinel.detectors import BASELINE_WINDOW_S, RECENT_WINDOW_S, Anomaly
 
 STAGES = ("auth", "retrieval", "llm_call", "tool_call")
 MIN_MEANINGFUL_LATENCY_MS = 50  # ignore ratio noise on stages too fast to matter (e.g. auth)
+DEPLOY_CORRELATION_WINDOW_S = 120  # flag an incident as possibly deploy-related within this long of a restart
 
 _STAGE_LABELS = {
     "auth": "authentication",
@@ -55,7 +56,34 @@ def _inconclusive(recent: dict, baseline: dict) -> RootCause:
     )
 
 
+def _deployment_note(db_path: str) -> str | None:
+    """If the service restarted recently, say so — a fresh deploy is a common, easily-overlooked
+    explanation for a sudden regression, and the root-cause explanation is the natural place to
+    surface it since that's what an on-call reader checks first."""
+    now = time.time()
+    recent = storage.spans_since(db_path, now - 30, now, name="chat_request")
+    if not recent:
+        return None
+    latest = recent[-1]
+    started_at = latest["attributes"].get("service_started_at")
+    svc_version = latest["attributes"].get("service_version")
+    if started_at is None:
+        return None
+    uptime = now - started_at
+    if uptime <= DEPLOY_CORRELATION_WINDOW_S:
+        return f"The service restarted {uptime:.0f}s ago (version {svc_version}) — this may be related to that deploy."
+    return None
+
+
 def diagnose(db_path: str, anomaly: Anomaly) -> RootCause:
+    cause = _diagnose_inner(db_path, anomaly)
+    note = _deployment_note(db_path)
+    if note:
+        cause.explanation = f"{cause.explanation} {note}"
+    return cause
+
+
+def _diagnose_inner(db_path: str, anomaly: Anomaly) -> RootCause:
     if anomaly.detector == "tool_failure_rate":
         r = storage.stage_breakdown(db_path, RECENT_WINDOW_S, ("tool_call",))["tool_call"]
         return RootCause(

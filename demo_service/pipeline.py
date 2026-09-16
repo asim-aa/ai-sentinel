@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 from opentelemetry.trace import Status, StatusCode, Tracer
 
+from ai_sentinel import version
+from ai_sentinel.pricing import estimate_cost_usd
 from demo_service.llm_client import Backend
 
 FAULT_MODES = (
@@ -51,6 +53,7 @@ async def run_pipeline(
     is_probe = prompt.strip() == HEALTH_PROBE_PROMPT
     invalid_output = False
     tokens_total = 0
+    cost_usd = 0.0
     answer = ""
 
     with tracer.start_as_current_span("chat_request") as root:
@@ -107,8 +110,11 @@ async def run_pipeline(
                     invalid_output = True
 
                 tokens_total = result.tokens_in + result.tokens_out
+                cost_usd = estimate_cost_usd(backend.model, result.tokens_in, result.tokens_out)
+                span.set_attribute("model", backend.model)
                 span.set_attribute("tokens_in", result.tokens_in)
                 span.set_attribute("tokens_out", result.tokens_out)
+                span.set_attribute("cost_usd", cost_usd)
 
             with tracer.start_as_current_span("tool_call") as span:
                 if state.tools_enabled:
@@ -125,6 +131,9 @@ async def run_pipeline(
             root.set_attribute("fault_mode", state.fault_mode)
             root.set_attribute("invalid_output", invalid_output)
             root.set_attribute("tokens_total", tokens_total)
+            root.set_attribute("cost_usd", cost_usd)
+            root.set_attribute("service_version", version.SERVICE_VERSION)
+            root.set_attribute("service_started_at", version.SERVICE_STARTED_AT)
             return {
                 "answer": answer,
                 "backend": state.active_backend,
@@ -138,4 +147,6 @@ async def run_pipeline(
             root.set_attribute("backend", state.active_backend)
             root.set_attribute("fault_mode", state.fault_mode)
             root.set_attribute("error_reason", exc.reason)
+            root.set_attribute("service_version", version.SERVICE_VERSION)
+            root.set_attribute("service_started_at", version.SERVICE_STARTED_AT)
             raise

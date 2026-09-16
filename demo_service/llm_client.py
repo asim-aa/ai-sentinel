@@ -48,6 +48,7 @@ class MockBackend(Backend):
 
     def __init__(self, name: str, base_latency_ms: float = 350.0, jitter_ms: float = 60.0):
         self.name = name
+        self.model = "mock"
         self.base_latency_ms = base_latency_ms
         self.jitter_ms = jitter_ms
 

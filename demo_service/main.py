@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from ai_sentinel import storage, tracing
+from ai_sentinel import storage, tracing, version
 from demo_service.llm_client import make_backends
 from demo_service.pipeline import FAULT_MODES, PipelineError, PipelineState, run_pipeline
 
@@ -84,6 +84,8 @@ def admin_state():
         "tools_enabled": state.tools_enabled,
         "available_backends": list(backends.keys()),
         "available_fault_modes": list(FAULT_MODES),
+        "service_version": version.SERVICE_VERSION,
+        "uptime_s": round(time.time() - version.SERVICE_STARTED_AT, 1),
     }
 
 

@@ -177,6 +177,12 @@ button:disabled { opacity: 0.4; cursor: default; }
 .incident-summary { font-weight: 600; margin: 6px 0 4px; }
 .incident-cause { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
 .incident-cause .confidence { color: var(--text); font-family: var(--mono); }
+.incident-signals { font-size: 11px; font-family: var(--mono); color: var(--text-dim); margin-bottom: 6px; }
+.incident-canary {
+  font-size: 11px; font-family: var(--mono); color: var(--text-dim);
+  margin-bottom: 8px; padding: 6px 8px; border-radius: 6px; background: var(--panel-2);
+}
+.incident-canary.favorable { color: var(--green); background: rgba(63, 214, 122, 0.08); }
 .incident-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .incident-status-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
 .incident-status-label.verifying { color: var(--blue); }
