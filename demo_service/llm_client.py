@@ -1,8 +1,10 @@
 """LLM backends for the demo AI service.
 
-Two backends are selectable at runtime ("primary" / "backup"). If ANTHROPIC_API_KEY is set,
-both use the real Claude API (small Haiku calls); otherwise both fall back to a deterministic
-mock with realistic latency jitter, so the whole system works with zero setup.
+Two backends are selectable at runtime ("primary" / "backup"). Provider selection is
+availability-driven: with both ANTHROPIC_API_KEY and OPENAI_API_KEY set, primary and backup are
+genuinely different providers (Claude + OpenAI) — a real failover, not a same-model toggle. With
+only one key set, both point at that one provider. With neither, both fall back to a
+deterministic mock with realistic latency jitter, so the whole system works with zero setup.
 """
 
 from __future__ import annotations
@@ -12,8 +14,10 @@ import os
 import random
 import time
 from dataclasses import dataclass
+from typing import Callable
 
 ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-luna")  # OpenAI's cheapest/fastest tier
 
 _MOCK_RESPONSES = [
     "Based on the retrieved context, the answer is confirmed and consistent with the source material.",
@@ -67,12 +71,7 @@ class MockBackend(Backend):
 
 
 class AnthropicBackend(Backend):
-    """Real Claude API backend, used automatically when ANTHROPIC_API_KEY is set.
-
-    Both "primary" and "backup" currently point at the same model — swapping in a second
-    provider/model for backup is a one-line change here. Kept identical so the demo doesn't
-    require two separate API keys.
-    """
+    """Real Claude API backend, used when ANTHROPIC_API_KEY is set."""
 
     def __init__(self, name: str, model: str = ANTHROPIC_MODEL):
         import anthropic
@@ -103,12 +102,54 @@ class AnthropicBackend(Backend):
         )
 
 
+class OpenAIBackend(Backend):
+    """Real OpenAI API backend, used when OPENAI_API_KEY is set — a genuinely different provider
+    from AnthropicBackend, so primary/backup can be real cross-provider failover, not just two
+    instances of the same model. Uses the Responses API (the current OpenAI SDK's main entry
+    point), not the older Chat Completions API.
+    """
+
+    def __init__(self, name: str, model: str = OPENAI_MODEL):
+        import openai
+
+        self.name = name
+        self.model = model
+        self._client = openai.AsyncOpenAI()
+
+    async def generate(self, prompt: str) -> LLMResult:
+        start = time.perf_counter()
+        try:
+            resp = await self._client.responses.create(model=self.model, input=prompt)
+        except Exception as exc:  # noqa: BLE001 - surfaced as a span error by the caller
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            return LLMResult(text="", latency_ms=elapsed_ms, tokens_in=0, tokens_out=0, error=str(exc))
+
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        usage = getattr(resp, "usage", None)
+        return LLMResult(
+            text=resp.output_text,
+            latency_ms=elapsed_ms,
+            tokens_in=getattr(usage, "input_tokens", 0) if usage else 0,
+            tokens_out=getattr(usage, "output_tokens", 0) if usage else 0,
+        )
+
+
+# Priority order: first available key wins "primary", second-available wins "backup". Adding a
+# third provider is one more (env var, factory) entry here.
+_PROVIDERS: list[tuple[str, Callable[[str], Backend]]] = [
+    ("ANTHROPIC_API_KEY", lambda name: AnthropicBackend(name)),
+    ("OPENAI_API_KEY", lambda name: OpenAIBackend(name)),
+]
+
+
 def make_backends() -> dict[str, Backend]:
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return {
-            "primary": AnthropicBackend("primary"),
-            "backup": AnthropicBackend("backup"),
-        }
+    available = [factory for env_var, factory in _PROVIDERS if os.environ.get(env_var)]
+
+    if len(available) >= 2:
+        return {"primary": available[0]("primary"), "backup": available[1]("backup")}
+    if len(available) == 1:
+        factory = available[0]
+        return {"primary": factory("primary"), "backup": factory("backup")}
     return {
         "primary": MockBackend("primary", base_latency_ms=350.0),
         "backup": MockBackend("backup", base_latency_ms=420.0),

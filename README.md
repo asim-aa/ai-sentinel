@@ -39,10 +39,19 @@ uv sync
 This starts the demo service on `:8000` and the dashboard on `:8500`, and wipes
 `sentinel.db` on each run so you start from a clean baseline. Open `http://localhost:8500`.
 
-No `ANTHROPIC_API_KEY` needed — both LLM backends fall back to a deterministic mock with
-realistic latency jitter. Set `ANTHROPIC_API_KEY` to route through real `claude-haiku-4-5`
-calls instead (both "primary" and "backup" use the same model in that mode — swapping in a
-second real provider is a one-line change in `demo_service/llm_client.py`).
+No API keys needed — both LLM backends fall back to a deterministic mock with realistic latency
+jitter. Provider selection is availability-driven:
+
+| `ANTHROPIC_API_KEY` | `OPENAI_API_KEY` | primary | backup |
+|---|---|---|---|
+| — | — | mock | mock |
+| set | — | Claude (`claude-haiku-4-5`) | Claude |
+| — | set | OpenAI (`gpt-5.6-luna`) | OpenAI |
+| set | set | Claude | OpenAI |
+
+Set both and "Fail over to backup backend" is a real cross-provider failover, not just a second
+instance of the same model. Adding a third provider is one more entry in the priority list in
+`demo_service/llm_client.py`.
 
 ## Deploying persistently
 
@@ -112,7 +121,7 @@ live traffic, so they're deterministic.
 demo_service/        the AI service being watched
   main.py             FastAPI app: /health/*, /chat, /admin/*
   pipeline.py         auth -> retrieval -> llm_call -> tool_call, fault injection
-  llm_client.py       mock backend + real Anthropic backend
+  llm_client.py       mock + Anthropic + OpenAI backends, availability-driven selection
 
 ai_sentinel/          the reliability engine
   tracing.py           OpenTelemetry setup + SQLite span exporter
@@ -134,6 +143,5 @@ docs/ARCHITECTURE.md   the six-diagram architecture write-up
 ## Deliberately out of scope
 
 Real email/SMTP alerting (Slack and generic webhooks are covered — see above), Docker/an OTel
-Collector/Prometheus export, a second real model provider, and LLM-as-judge quality evaluation —
-all reasonable follow-ups, none needed to demonstrate the core idea. See `docs/ARCHITECTURE.md`
-for the full reasoning.
+Collector/Prometheus export, and LLM-as-judge quality evaluation — all reasonable follow-ups,
+none needed to demonstrate the core idea. See `docs/ARCHITECTURE.md` for the full reasoning.

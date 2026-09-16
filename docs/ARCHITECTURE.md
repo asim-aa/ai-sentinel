@@ -101,6 +101,13 @@ Every incident carries a recommended action; nothing executes until you click it
 calls `POST /admin/backend`. The dashboard's `POST /api/incidents/{id}/action` is the trigger;
 the incident is marked `remediated` in the same request.
 
+What "backup" actually *is* depends on what's configured: `demo_service/llm_client.py::make_backends`
+picks providers by availability — with both `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` set, primary
+is Claude (`claude-haiku-4-5`) and backup is OpenAI (`gpt-5.6-luna`), so a fail-over is a genuine
+cross-provider switch, not a same-model toggle. With only one key (or neither), both point at
+whatever's available. The priority list is a simple `(env var, factory)` sequence — a third
+provider is one more entry, not a restructure.
+
 ## 6. Dashboard data flow
 
 The browser is a pure viewer. `ai_sentinel/dashboard/static/app.js::refresh` runs
