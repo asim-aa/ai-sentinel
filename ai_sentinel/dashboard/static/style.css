@@ -154,7 +154,7 @@ button.primary { background: var(--blue); border-color: var(--blue); color: #fff
 button.ghost { background: transparent; }
 button:disabled { opacity: 0.4; cursor: default; }
 
-.incident-list, .trace-list, .regression-list, .blind-eval-list, .audit-list { display: flex; flex-direction: column; gap: 10px; }
+.incident-list, .trace-list, .regression-list, .blind-eval-list, .audit-list, .quality-eval-list { display: flex; flex-direction: column; gap: 10px; }
 
 .incident-card {
   background: var(--panel);
@@ -229,6 +229,13 @@ button:disabled { opacity: 0.4; cursor: default; }
 .blind-eval-trial:not(:last-child) { border-bottom: 1px solid var(--border); }
 .trial-fault { color: var(--text); font-weight: 600; }
 .trial-arrow { color: var(--border); }
+
+.quality-eval-row { padding: 8px 0; font-size: 11.5px; }
+.quality-eval-row:not(:last-child) { border-bottom: 1px solid var(--border); }
+.quality-eval-row-top { display: flex; align-items: center; gap: 8px; font-family: var(--mono); }
+.quality-eval-response {
+  margin: 6px 0 4px; padding-left: 17px; color: var(--text-dim); font-style: italic;
+}
 
 .audit-card {
   background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;

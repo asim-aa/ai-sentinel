@@ -340,3 +340,60 @@ this feature required backdating a "recovery" for a test. Live-verified against 
 `tool_failure_rate` incident that ran the full remediate → verify cycle: the card correctly showed
 4 incidents, 1 verified recovery, 0 rollbacks, and a 15s median recovery time, all matching what
 `/api/reliability` returned directly.
+
+## 14. Quality eval (LLM-as-judge)
+
+Every eval so far in this system has a mechanically checkable ground truth: did a span show
+`ERROR`, did the diagnosed stage match, did the metric actually recover. `ai_sentinel/
+quality_eval.py` is the first one that doesn't — it asks a real model to judge whether another
+model's response is any good, which has no ground truth of its own, only an opinion. That
+distinction shaped every design choice here.
+
+**Rubric: one binary question, not a quality score.** `RUBRIC_TEMPLATE` asks the judge exactly
+one thing: does this response specifically address what was asked, or is it generic text that
+could sit under any question — answered `PASS`/`FAIL`, not a 1–5 scale. This matches the
+categorical-outcome idiom every other eval in this system already uses (`verified`/`rolled_back`;
+`correct`/`wrong_stage`/`inconclusive`/`not_detected`) rather than introducing a numeric score
+whose meaning (what separates a 3 from a 4?) nothing else here has to answer. Correctness and
+style aren't judged — relevance is, specifically because it's the one quality axis that (a) isn't
+already covered by an existing detector (`invalid_output_rate`, §4/§9, catches malformed/corrupted
+text mechanically — `pipeline.py`'s fault injection sets that flag directly, no judgment involved)
+and (b) produces an honest, non-flaky signal even against `MockBackend`: its four canned responses
+are deliberately generic and prompt-independent, so a real judge should *consistently* fail them
+for lack of relevance — a true, reproducible result, not noise, and a built-in sanity check on the
+judge itself before trusting it against a real provider's answers.
+
+**Test prompts are fixed and known, not blind.** Unlike `blind_eval.py`, there's no ground truth
+being withheld here — "what a relevant answer looks like" is exactly the question put to the
+judge, not a secret. `TEST_PROMPTS` is a small, representative, non-random set.
+
+**The judge model is a separate role, not the demo's backup backend, and has no mock fallback.**
+`_judge_provider()` picks Anthropic (preferred) or OpenAI independently of `demo_service`'s
+primary/backup selection — the judge evaluates the system, it isn't part of it — and deliberately
+does **not** fall back to a mock the way the demo backend does: faking semantic judgment would be
+dishonest in exactly the way this project has avoided everywhere else (see the blind eval's
+"don't fabricate precision" reasoning, §9). If neither `ANTHROPIC_API_KEY` nor `OPENAI_API_KEY`
+is set, `run_quality_eval` raises immediately with a clear message; the API layer turns that into
+a `503`, and the dashboard surfaces it directly rather than failing silently.
+
+**The judge's own SDK calls are independent of `demo_service/llm_client.py`, not reused from it**,
+even though the request shapes are nearly identical (same Anthropic Messages API, same OpenAI
+Responses API). `ai_sentinel/` talks to `demo_service/` over HTTP everywhere else in this codebase
+— `synthetic.py`, `canary.py`, `regression.py`, `blind_eval.py` all probe it through `/chat` and
+`/admin/*`, never by importing its Python modules directly, because in a real deployment the
+engine and the watched service are different processes. Importing `AnthropicBackend`/
+`OpenAIBackend` directly into the engine package to save a few lines would quietly break that
+boundary; `quality_eval.py` owns its own minimal `_call_anthropic`/`_call_openai` instead.
+
+**Cost is tracked like every other LLM call in this system.** The judge's token usage is priced
+through the existing `ai_sentinel/pricing.py` table (same model IDs `llm_client.py` already uses,
+so no new pricing entries were needed) and reported per-run — a quality eval that hid what it cost
+to run would undercut the same "real dollar cost, not just tokens" theme §7 established.
+
+No real `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` was available in-session, so — the same boundary the
+OpenAI backend's live call path has always had here — the judge-calling logic is verified via 15
+mocked-SDK unit tests (provider selection, verdict parsing, both providers' response shapes,
+aggregation, persistence), and the "no judge configured" path is the one verified live end to end:
+a real `503` from a running dashboard, parsed correctly by the frontend's error handling, and
+surfaced to the user with the exact message `run_quality_eval` raised — confirmed via the browser
+console rather than a literal dialog, since automated browsers suppress native `alert()`.

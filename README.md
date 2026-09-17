@@ -12,7 +12,7 @@ the rendered version.
 
 Claims that are actually checked, not just described:
 
-- **100 automated tests**, passing both locally and on a persistent deployment.
+- **117 automated tests**, passing both locally and on a persistent deployment.
 - **All 5 supported fault classes correctly attributed in a full blind fault-injection pass** —
   the fault is withheld from detection and diagnosis, and root-cause attribution is graded against
   the hidden ground truth afterward, not just exercised and assumed correct (see
@@ -29,6 +29,10 @@ Claims that are actually checked, not just described:
   wasn't scoped to exclude) independently rediscovered three times in three different features.
 - **Deployed persistently** on a shared GPU cluster box via user-level systemd — no sudo, survives
   a reboot.
+- **An LLM-as-judge relevance eval, with no mock fallback** — unlike the demo backend, judging
+  genuinely can't be faked, so this feature requires a real `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`
+  to run and says so clearly when neither is set, rather than pretending. See
+  [Quality eval](#quality-eval) below for what it actually checks and why.
 
 ## The idea
 
@@ -201,6 +205,32 @@ than excluding the fault from the eval's pool to make the score look better. Liv
 `invalid_output_rate` incident now correctly attributes to `llm_call` and recommends fail-over,
 same as any other LLM-call issue.
 
+## Quality eval
+
+The blind eval checks *root-cause attribution* — given a fault, did the system name the right
+stage. It says nothing about response *quality*, which is a different question this system didn't
+answer at all until `ai_sentinel/quality_eval.py`. Click **Run quality eval** and a small, fixed
+set of representative prompts get sent through the real pipeline; a real model judges each
+response against one rubric question: **does this response specifically address what was asked,
+or is it generic boilerplate that could sit under any question?**
+
+That one question, deliberately, not a multi-axis quality score. Correctness and style aren't
+judged here — relevance is, because it's the one quality dimension that (a) isn't already covered
+by an existing detector (malformed/corrupted output is already caught mechanically —
+`pipeline.py`'s fault injection sets that flag directly, no judgment needed) and (b) produces an
+honest, non-flaky signal even against the mock backend: `MockBackend`'s four canned responses are
+deliberately generic and prompt-independent, so a real judge should consistently fail them for
+lack of relevance — which is *true*, not noise, and a good way to sanity-check the eval itself
+before trusting it against a real provider's answers.
+
+The judge model is chosen independently of the demo service's primary/backup backends (Anthropic
+preferred, OpenAI as fallback) and has **no mock fallback** — faking semantic judgment would be
+dishonest in exactly the way this project has avoided everywhere else. If neither
+`ANTHROPIC_API_KEY` nor `OPENAI_API_KEY` is set, clicking the button surfaces that directly
+instead of silently doing nothing or pretending to grade. The judge's own token usage is priced
+through the same `ai_sentinel/pricing.py` table every other cost number in this system uses, so a
+quality-eval run reports what it actually cost to run, not just a pass/fail count.
+
 ## Testing
 
 ```bash
@@ -232,6 +262,7 @@ ai_sentinel/          the reliability engine
   canary.py            shadow-probes both backends before a fail-over recommendation
   regression.py        turns a verified fix into a replayable regression fixture
   blind_eval.py        honest accuracy eval: injects an unlabeled fault, scores the diagnosis
+  quality_eval.py      LLM-as-judge relevance eval, no mock fallback -- judging can't be faked
   alerts.py            structured logging + Slack + generic webhook delivery
   engine.py            ties detect -> diagnose -> correlate -> recommend -> canary -> alert together
   dashboard/           API + static UI
@@ -244,6 +275,6 @@ docs/ARCHITECTURE.md   the six-diagram architecture write-up
 
 ## Deliberately out of scope
 
-Real email/SMTP alerting (Slack and generic webhooks are covered — see above), Docker/an OTel
-Collector/Prometheus export, and LLM-as-judge quality evaluation — all reasonable follow-ups,
-none needed to demonstrate the core idea. See `docs/ARCHITECTURE.md` for the full reasoning.
+Real email/SMTP alerting (Slack and generic webhooks are covered — see above) and Docker/an OTel
+Collector/Prometheus export — reasonable follow-ups, neither needed to demonstrate the core idea.
+See `docs/ARCHITECTURE.md` for the full reasoning.

@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ai_sentinel import blind_eval, engine, regression, remediation, storage, synthetic, verification
+from ai_sentinel import blind_eval, engine, quality_eval, regression, remediation, storage, synthetic, verification
 
 DB_PATH = os.environ.get(
     "SENTINEL_DB_PATH", str(Path(__file__).resolve().parent.parent.parent / "sentinel.db")
@@ -178,6 +178,19 @@ async def api_run_blind_eval(trials: int = blind_eval.DEFAULT_TRIAL_COUNT):
 @app.get("/api/remediation-runs")
 def api_remediation_runs(limit: int = 20):
     return storage.list_remediation_runs(DB_PATH, limit=limit)
+
+
+@app.get("/api/quality-eval/runs")
+def api_quality_eval_runs(limit: int = 10):
+    return storage.list_quality_eval_runs(DB_PATH, limit=limit)
+
+
+@app.post("/api/quality-eval/run")
+async def api_run_quality_eval():
+    try:
+        return await quality_eval.run_quality_eval(DB_PATH, DEMO_URL)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @app.get("/api/fault-state")

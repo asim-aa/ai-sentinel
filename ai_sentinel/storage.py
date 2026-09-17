@@ -101,6 +101,17 @@ CREATE TABLE IF NOT EXISTS blind_eval_runs (
     trials TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_blind_eval_runs_ts ON blind_eval_runs(ts);
+
+CREATE TABLE IF NOT EXISTS quality_eval_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    judge_model TEXT NOT NULL,
+    prompt_count INTEGER NOT NULL,
+    pass_count INTEGER NOT NULL,
+    total_cost_usd REAL NOT NULL,
+    results TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quality_eval_runs_ts ON quality_eval_runs(ts);
 """
 
 
@@ -599,5 +610,34 @@ def list_blind_eval_runs(db_path: str, limit: int = 10) -> list[dict]:
             d = dict(r)
             d["counts"] = json.loads(d["counts"])
             d["trials"] = json.loads(d["trials"])
+            out.append(d)
+        return out
+
+
+# --------------------------------------------------------------- quality eval --
+
+def record_quality_eval_run(
+    db_path: str, *, ts: float, judge_model: str, prompt_count: int, pass_count: int,
+    total_cost_usd: float, results: list[dict],
+) -> int:
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            """INSERT INTO quality_eval_runs
+               (ts, judge_model, prompt_count, pass_count, total_cost_usd, results)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (ts, judge_model, prompt_count, pass_count, total_cost_usd, json.dumps(results)),
+        )
+        return cur.lastrowid
+
+
+def list_quality_eval_runs(db_path: str, limit: int = 10) -> list[dict]:
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM quality_eval_runs ORDER BY ts DESC LIMIT ?", (limit,)
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["results"] = json.loads(d["results"])
             out.append(d)
         return out

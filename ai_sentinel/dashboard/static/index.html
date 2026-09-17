@@ -101,6 +101,19 @@
   </section>
 
   <section>
+    <h2>Quality eval <span style="text-transform:none;color:var(--text-dim)">(LLM-as-judge: is the response actually relevant, not just present?)</span></h2>
+    <div class="panel control-row">
+      <div class="control-group">
+        <div class="btn-row">
+          <button id="run-quality-eval-btn" class="primary">Run quality eval</button>
+          <span id="quality-eval-summary" class="regression-summary"></span>
+        </div>
+      </div>
+    </div>
+    <div class="quality-eval-list" id="quality-eval-list"><div class="empty">No quality eval runs yet.</div></div>
+  </section>
+
+  <section>
     <h2>Trace explorer <span style="text-transform:none;color:var(--text-dim)">(most recent requests)</span></h2>
     <div class="trace-list" id="trace-list"><div class="empty">No traces yet — send a test request.</div></div>
   </section>

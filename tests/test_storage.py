@@ -435,3 +435,47 @@ def test_reliability_summary_respects_the_window(tmp_path):
     assert summary["incident_count"] == 1  # the old one (ts=now-200) is outside the window
     assert summary["verified_count"] == 0  # its remediation_run also finished outside the window
     assert summary["median_recovery_s"] is None
+
+
+def test_record_quality_eval_run_round_trips_results(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    results = [
+        {"prompt": "What is the capital of France?", "response": "Paris.", "verdict": "pass",
+         "reasoning": "Directly answers the question.", "judge_model": "claude-haiku-4-5-20251001",
+         "judge_cost_usd": 0.0001},
+        {"prompt": "Summarize the report.", "response": "Based on the retrieved context...",
+         "verdict": "fail", "reasoning": "Generic boilerplate, not specific to the prompt.",
+         "judge_model": "claude-haiku-4-5-20251001", "judge_cost_usd": 0.0001},
+    ]
+
+    run_id = storage.record_quality_eval_run(
+        db, ts=time.time(), judge_model="claude-haiku-4-5-20251001", prompt_count=2,
+        pass_count=1, total_cost_usd=0.0002, results=results,
+    )
+
+    runs = storage.list_quality_eval_runs(db)
+    assert len(runs) == 1
+    assert runs[0]["id"] == run_id
+    assert runs[0]["judge_model"] == "claude-haiku-4-5-20251001"
+    assert runs[0]["prompt_count"] == 2
+    assert runs[0]["pass_count"] == 1
+    assert runs[0]["total_cost_usd"] == 0.0002
+    assert runs[0]["results"] == results
+
+
+def test_list_quality_eval_runs_orders_newest_first_and_respects_limit(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    now = time.time()
+    for i in range(3):
+        storage.record_quality_eval_run(
+            db, ts=now + i, judge_model="claude-haiku-4-5-20251001", prompt_count=1,
+            pass_count=1, total_cost_usd=0.0001,
+            results=[{"prompt": "x", "response": "y", "verdict": "pass", "reasoning": "z",
+                      "judge_model": "claude-haiku-4-5-20251001", "judge_cost_usd": 0.0001}],
+        )
+
+    runs = storage.list_quality_eval_runs(db, limit=2)
+    assert len(runs) == 2
+    assert runs[0]["ts"] > runs[1]["ts"]

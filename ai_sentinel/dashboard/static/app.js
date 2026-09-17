@@ -50,7 +50,12 @@ function escapeHtml(s) {
 
 async function fetchJSON(url, opts) {
   const resp = await fetch(url, opts);
-  if (!resp.ok) throw new Error(`${url} -> ${resp.status}`);
+  if (!resp.ok) {
+    // FastAPI's HTTPException always comes back as {"detail": "..."} -- surface that instead of
+    // just the status code, so a button's catch handler can show the user why, not just that.
+    const detail = await resp.json().then(b => b.detail).catch(() => null);
+    throw new Error(detail || `${url} -> ${resp.status}`);
+  }
   return resp.json();
 }
 
@@ -491,6 +496,43 @@ function renderAuditTrail(runs) {
     .join("");
 }
 
+function renderQualityEvalRuns(runs) {
+  const el = document.getElementById("quality-eval-list");
+  const summaryEl = document.getElementById("quality-eval-summary");
+
+  if (!runs.length) {
+    summaryEl.textContent = "";
+    el.innerHTML = '<div class="empty">No quality eval runs yet.</div>';
+    return;
+  }
+
+  const latest = runs[0];
+  summaryEl.textContent = `${latest.pass_count}/${latest.prompt_count} relevant (latest, ${escapeHtml(latest.judge_model)})`;
+
+  el.innerHTML = runs
+    .map(run => {
+      const time = new Date(run.ts * 1000).toLocaleString();
+      const rows = run.results
+        .map(r => `<div class="quality-eval-row">
+          <div class="quality-eval-row-top">
+            <span class="badge ${r.verdict === "pass" ? "ok" : "bad"}"></span>
+            <span class="trial-fault">${escapeHtml(r.prompt)}</span>
+          </div>
+          <div class="quality-eval-response">"${escapeHtml(r.response)}"</div>
+          <div class="verification-detail">${escapeHtml(r.reasoning)}</div>
+        </div>`)
+        .join("");
+      return `<div class="regression-card">
+        <div class="incident-top">
+          <span class="sev">${time} · ${escapeHtml(run.judge_model)}</span>
+          <span class="regression-status">${run.pass_count}/${run.prompt_count} relevant · $${run.total_cost_usd.toFixed(4)}</span>
+        </div>
+        ${rows}
+      </div>`;
+    })
+    .join("");
+}
+
 function renderTraces(list) {
   const el = document.getElementById("trace-list");
   if (!list.length) {
@@ -530,7 +572,7 @@ function renderTraces(list) {
 
 async function refresh() {
   try {
-    const [health, metrics, reliability, incidents, traces, faultState, regressions, blindEvalRuns, auditTrail] = await Promise.all([
+    const [health, metrics, reliability, incidents, traces, faultState, regressions, blindEvalRuns, auditTrail, qualityEvalRuns] = await Promise.all([
       fetchJSON("/api/health"),
       fetchJSON("/api/metrics?window=300"),
       fetchJSON("/api/reliability"),
@@ -540,6 +582,7 @@ async function refresh() {
       fetchJSON("/api/regressions"),
       fetchJSON("/api/blind-eval/runs"),
       fetchJSON("/api/remediation-runs"),
+      fetchJSON("/api/quality-eval/runs"),
     ]);
     renderHealth(health);
     renderMetrics(metrics);
@@ -550,6 +593,7 @@ async function refresh() {
     renderRegressions(regressions);
     renderBlindEvalRuns(blindEvalRuns);
     renderAuditTrail(auditTrail);
+    renderQualityEvalRuns(qualityEvalRuns);
   } catch (err) {
     console.error("refresh failed", err);
   }
@@ -603,6 +647,19 @@ document.addEventListener("DOMContentLoaded", () => {
         await postJSON("/api/blind-eval/run", {});
       } catch (err) {
         console.error("blind eval failed", err);
+      } finally {
+        t.disabled = false;
+        t.textContent = original;
+        refresh();
+      }
+    } else if (t.id === "run-quality-eval-btn") {
+      t.disabled = true;
+      const original = t.textContent;
+      t.textContent = "Running…";
+      try {
+        await postJSON("/api/quality-eval/run", {});
+      } catch (err) {
+        alert(err.message);
       } finally {
         t.disabled = false;
         t.textContent = original;
