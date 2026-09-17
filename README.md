@@ -169,11 +169,15 @@ twice because the previous trial's clean, unrelated traffic was still sitting in
 Fixed by spacing trials apart instead of narrowing the detection window just for the eval — the
 whole point is testing the *real*, unmodified detection path, not a faster stand-in for it.
 
-`malformed_output` is deliberately included in the fault pool even though it's expected to score
-`inconclusive` every time: it corrupts response text without ever marking a span `ERROR`, so the
-generic per-stage error-rate comparison in `rootcause.py` has nothing to point at yet. Excluding
-it would make the reported accuracy look better than the system actually is — the eval's whole
-value is in reporting that honestly rather than curating away the parts that don't look good.
+This eval is also what caught a real gap, honestly: for a while, `malformed_output` scored
+`inconclusive` on every trial — it corrupts response text without ever marking a span `ERROR`, so
+the generic per-stage error-rate comparison in `rootcause.py` had nothing to point at. Fixed by
+giving `invalid_output_rate` its own short-circuit attribution branch straight to `llm_call`
+(mirroring the existing `tool_failure_rate`/`cost_spike` branches — only the LLM call stage ever
+produces the response text, so there's no real per-stage question to answer there either), rather
+than excluding the fault from the eval's pool to make the score look better. Live-verified: a real
+`invalid_output_rate` incident now correctly attributes to `llm_call` and recommends fail-over,
+same as any other LLM-call issue.
 
 ## Testing
 

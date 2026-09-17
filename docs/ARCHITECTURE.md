@@ -194,12 +194,17 @@ diagnosis couldn't attribute a stage), or `not_detected` (detector never fired a
 per-run to a new `blind_eval_runs` table (one row per full batch, trials as a JSON list, same
 pattern `canary_result` already uses for structured-data-in-a-column).
 
-`malformed_output` stays in the fault pool even though it's expected to score `inconclusive` on
-every trial: it corrupts response text without marking any span `ERROR`, so the generic per-stage
-error-rate comparison in `rootcause.py`'s `diagnose()` (§4) has no per-stage signal to compare —
-excluding it would inflate the reported accuracy past what the system actually does. This is a
-known, real gap, not a bug in the eval; closing it would mean giving `invalid_output_rate` its own
-attribution path the way `tool_failure_rate` and `cost_spike` already have one.
+`malformed_output` stayed in the fault pool from the start even though it initially scored
+`inconclusive` on every trial: it corrupts response text without marking any span `ERROR`, so the
+generic per-stage error-rate comparison in `rootcause.py`'s `diagnose()` (§4) had no per-stage
+signal to compare — excluding it would have inflated the reported accuracy past what the system
+actually did. That's exactly how the eval did its job: it made the gap visible and quantified
+(`4/5`, not a vague "mostly works") instead of letting it stay invisible. `rootcause.py` now
+short-circuits `invalid_output_rate` straight to `stage="llm_call"`, mirroring the existing
+`tool_failure_rate`/`cost_spike` branches — only the LLM call stage ever produces the response
+text, so the same "no real per-stage attribution question to answer" reasoning applies.
+Live-verified: a real `invalid_output_rate` incident now attributes to `llm_call` with 85%
+confidence and recommends fail-over, the same as any other LLM-call issue would.
 
 **Trial isolation is the whole design problem here**, and the first live run caught it the hard
 way: `detectors.py`'s recent/baseline windows are fixed, global rolling windows over all

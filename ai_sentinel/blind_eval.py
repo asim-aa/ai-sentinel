@@ -35,11 +35,11 @@ TRIAL_PROBE_COUNT = 6
 INTER_TRIAL_GAP_S = RECENT_WINDOW_S + 10
 
 # Which detector should notice each injectable fault, and which pipeline stage root-cause should
-# name once it does. `malformed_output` is deliberately included even though rootcause.py has no
-# per-stage attribution path for it yet (it corrupts output text without ever marking a span
-# ERROR, so the generic per-stage error-rate comparison finds nothing to point at) -- excluding it
-# would make the reported accuracy look better than the system actually is. See
-# docs/ARCHITECTURE.md for the known gap; this eval is what quantifies it honestly.
+# name once it does. This eval is what caught `malformed_output` scoring `inconclusive` on every
+# trial before rootcause.py gained a short-circuit branch for invalid_output_rate (mirroring the
+# existing tool_failure_rate/cost_spike branches) -- excluding a fault from this pool just because
+# it's expected to score badly would make the reported accuracy look better than the system
+# actually is, which is exactly how that gap got found and fixed instead of staying invisible.
 FAULT_EXPECTATIONS: dict[str, tuple] = {
     "slow_llm": (detectors.detect_latency_spike, "llm_call"),
     "llm_errors": (detectors.detect_error_rate_spike, "llm_call"),

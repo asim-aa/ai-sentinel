@@ -111,6 +111,24 @@ def _diagnose_inner(db_path: str, anomaly: Anomaly) -> RootCause:
             evidence={"anomaly_evidence": anomaly.evidence},
         )
 
+    if anomaly.detector == "invalid_output_rate":
+        # Same reasoning as cost_spike above: only the LLM call stage ever produces the response
+        # text, so a malformed/invalid answer is definitionally coming from there. The generic
+        # per-stage comparison below can't see this at all — malformed output never marks any
+        # span's status ERROR, it just corrupts the text, so every stage's error rate reads clean
+        # and the comparison always falls through to inconclusive.
+        return RootCause(
+            stage="llm_call",
+            explanation=(
+                f"Output is coming back malformed or invalid ({anomaly.summary}). Only the LLM call "
+                f"stage produces the response text — retrieval, auth, and tool calls never touch it — "
+                f"so the corruption is definitionally happening there, likely a provider-side "
+                f"formatting change or a prompt that's confusing the model."
+            ),
+            confidence=0.85,
+            evidence={"anomaly_evidence": anomaly.evidence},
+        )
+
     recent, baseline = _stage_windows(db_path, anomaly.detector)
     is_latency_metric = anomaly.detector == "latency_spike"
     deviations: dict[str, float] = {}

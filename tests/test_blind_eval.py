@@ -76,10 +76,13 @@ def test_run_trial_scores_correct_for_tool_failure(tmp_path):
     assert fault_calls == ["tool_failure", "normal"]  # injected, then always restored after
 
 
-def test_run_trial_scores_inconclusive_for_malformed_output(tmp_path):
-    """A known, real gap: malformed_output corrupts response text without marking any span
-    ERROR, so rootcause's generic per-stage error-rate comparison finds nothing to point at.
-    The eval is supposed to surface this honestly, not hide it."""
+def test_run_trial_scores_correct_for_malformed_output(tmp_path):
+    """This used to be the eval's one honest miss: malformed_output corrupts response text
+    without marking any span ERROR, so rootcause's old generic per-stage error-rate comparison
+    found nothing to point at and always came back inconclusive -- exactly the gap the blind eval
+    was built to surface. rootcause.py now short-circuits invalid_output_rate straight to
+    llm_call (same reasoning as the existing cost_spike/tool_failure_rate branches), so this
+    should score correct like everything else."""
     db = str(tmp_path / "t.db")
     storage.init_db(db)
 
@@ -94,8 +97,8 @@ def test_run_trial_scores_inconclusive_for_malformed_output(tmp_path):
     with patch("httpx.AsyncClient.post", side_effect=fake_post):
         result = asyncio.run(blind_eval.run_trial(db, "http://demo", "malformed_output"))
 
-    assert result["outcome"] == "inconclusive"
-    assert result["diagnosed_stage"] is None
+    assert result["outcome"] == "correct"
+    assert result["diagnosed_stage"] == "llm_call"
 
 
 def test_run_trial_scores_not_detected_without_baseline(tmp_path):

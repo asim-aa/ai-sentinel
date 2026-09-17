@@ -87,6 +87,27 @@ def test_diagnose_cost_spike_shortcircuits_to_llm_call_stage(tmp_path):
     assert "p95" not in cause.explanation.lower()
 
 
+def test_diagnose_invalid_output_shortcircuits_to_llm_call_stage(tmp_path):
+    """Only the LLM call stage produces response text, so malformed-output attribution shouldn't
+    fall through to the generic per-stage error-rate comparison — which can't see it at all,
+    since corrupting the text never marks any span's status ERROR (this was the real gap the
+    blind fault-injection eval quantified: malformed_output scored 'inconclusive' every trial
+    until this branch existed)."""
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+
+    anomaly = detectors.Anomaly(
+        detector="invalid_output_rate", severity="warning",
+        summary="invalid/malformed output rate is 40% (via live traffic)",
+        evidence={"rate": 0.4},
+    )
+    cause = rootcause.diagnose(db, anomaly)
+
+    assert cause.stage == "llm_call"
+    assert cause.confidence == 0.85
+    assert "malformed" in cause.explanation.lower() or "invalid" in cause.explanation.lower()
+
+
 def test_diagnose_stays_accurate_on_a_later_sweep_of_a_sustained_fault(tmp_path):
     """Root-cause attribution needs the same baseline-exclusion fix as the detector: on a
     second detection of a fault that's been running for minutes, its own earlier history has
