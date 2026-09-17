@@ -464,6 +464,24 @@ def latest_remediation_run(db_path: str, incident_id: int) -> dict | None:
         return dict(row) if row else None
 
 
+def list_remediation_runs(db_path: str, limit: int = 50) -> list[dict]:
+    """Every remediation ever run, most recent first, each carrying enough of its parent
+    incident's context (detector, summary, stage) to read as a standalone audit entry — every
+    action here was a human clicking a button, never triggered automatically; that's an
+    architectural invariant of this system, not a per-row fact worth storing."""
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            """SELECT remediation_runs.*, incidents.detector AS incident_detector,
+                      incidents.summary AS incident_summary, incidents.stage AS incident_stage
+               FROM remediation_runs
+               JOIN incidents ON incidents.id = remediation_runs.incident_id
+               ORDER BY remediation_runs.started_at DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 # -------------------------------------------------------------- regressions --
 
 def upsert_regression(

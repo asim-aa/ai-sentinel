@@ -260,3 +260,23 @@ table, `llm_call` correctly highlighted as the +883% outlier), a real `cost_spik
 (single-row token comparison), and confirmed the `tool_failure_rate` row shape directly against
 live incident data — the three structurally distinct branches in `_evidenceRows`, not just one
 happy path.
+
+## 11. Remediation audit trail
+
+Every remediation always did get recorded (`remediation_runs`, §5) — what was missing was a way to
+*read* that history as its own log, independent of the incident feed. `storage.list_remediation_runs`
+joins `remediation_runs` to `incidents` (detector, summary, stage) so each row reads as a
+self-contained audit entry without a second lookup, ordered newest-first. `GET
+/api/remediation-runs` exposes it; the dashboard's new "Remediation audit trail" section renders
+every run ever recorded — not just the latest one per incident, which is all the existing
+per-incident verification block (§5) ever showed.
+
+"Initiated by: you, via the dashboard" is a fixed caption on every row, not a stored column —
+every remediation in this system is human-clicked by architectural guarantee (§5's whole
+co-pilot-not-autopilot point), so recording it per-row would just be a constant repeated forever.
+Live-verified against two genuinely different real outcomes on the same running dashboard: a
+`cost_spike` fail-over that correctly rolled back (switching providers doesn't fix a token-count
+problem) and a `latency_spike` fail-over that also rolled back on this particular run (mock-backend
+jitter meant the "after" probes didn't come back meaningfully faster than "before") — both
+rendered with their real before/after numbers and rollback detail text, not a contrived
+verified-only example.

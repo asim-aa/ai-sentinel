@@ -154,7 +154,7 @@ button.primary { background: var(--blue); border-color: var(--blue); color: #fff
 button.ghost { background: transparent; }
 button:disabled { opacity: 0.4; cursor: default; }
 
-.incident-list, .trace-list, .regression-list, .blind-eval-list { display: flex; flex-direction: column; gap: 10px; }
+.incident-list, .trace-list, .regression-list, .blind-eval-list, .audit-list { display: flex; flex-direction: column; gap: 10px; }
 
 .incident-card {
   background: var(--panel);
@@ -223,6 +223,17 @@ button:disabled { opacity: 0.4; cursor: default; }
 .blind-eval-trial:not(:last-child) { border-bottom: 1px solid var(--border); }
 .trial-fault { color: var(--text); font-weight: 600; }
 .trial-arrow { color: var(--border); }
+
+.audit-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
+}
+.audit-action { font-size: 12px; margin: 6px 0 4px; }
+.audit-initiator { color: var(--text-dim); font-size: 11px; }
+.audit-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.audit-outcome-label {
+  font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-dim); margin-left: auto;
+}
 
 .verification {
   margin-top: 10px; padding: 9px 12px; border-radius: 8px; font-size: 12px;

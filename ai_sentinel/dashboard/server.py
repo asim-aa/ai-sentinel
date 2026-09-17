@@ -166,6 +166,11 @@ async def api_run_blind_eval(trials: int = blind_eval.DEFAULT_TRIAL_COUNT):
     return await blind_eval.run_blind_eval(DB_PATH, DEMO_URL, trial_count=trials)
 
 
+@app.get("/api/remediation-runs")
+def api_remediation_runs(limit: int = 20):
+    return storage.list_remediation_runs(DB_PATH, limit=limit)
+
+
 @app.get("/api/fault-state")
 async def api_fault_state():
     async with httpx.AsyncClient(timeout=5.0) as client:

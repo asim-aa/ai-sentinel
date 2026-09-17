@@ -376,6 +376,45 @@ function renderBlindEvalRuns(runs) {
     .join("");
 }
 
+function _actionLabel(code) {
+  const entry = Object.entries(ACTION_LABELS).find(([, c]) => c === code);
+  return entry ? entry[0] : code;
+}
+
+function renderAuditTrail(runs) {
+  const el = document.getElementById("audit-list");
+  if (!runs.length) {
+    el.innerHTML = '<div class="empty">No remediations run yet.</div>';
+    return;
+  }
+
+  el.innerHTML = runs
+    .map(run => {
+      const time = new Date(run.started_at * 1000).toLocaleString();
+      const outcomeClass = run.outcome === "verified" ? "ok" : run.outcome === "rolled_back" ? "bad" : "pending";
+      const before = fmtMetric(run.metric, run.before_value);
+      const after = fmtMetric(run.metric, run.after_value != null ? run.after_value : run.before_value);
+      return `<div class="audit-card">
+        <div class="incident-top">
+          <span class="sev">${escapeHtml(run.incident_detector)}${run.incident_stage ? " · " + escapeHtml(run.incident_stage) : ""}</span>
+          <span class="time">${time}</span>
+        </div>
+        <div class="incident-summary">${escapeHtml(run.incident_summary || "")}</div>
+        <div class="audit-action">
+          action: <strong>${escapeHtml(_actionLabel(run.action))}</strong>
+          <span class="audit-initiator">· initiated by: you, via the dashboard</span>
+        </div>
+        <div class="audit-row">
+          <span class="badge ${outcomeClass}"></span>
+          <span class="metric-compare">${escapeHtml(run.metric)}: <strong>${before}</strong> → <strong>${after}</strong></span>
+          <span class="audit-outcome-label">${escapeHtml(run.outcome)}</span>
+        </div>
+        ${run.detail ? `<div class="verification-detail">${escapeHtml(run.detail)}</div>` : ""}
+      </div>`;
+    })
+    .join("");
+}
+
 function renderTraces(list) {
   const el = document.getElementById("trace-list");
   if (!list.length) {
@@ -415,7 +454,7 @@ function renderTraces(list) {
 
 async function refresh() {
   try {
-    const [health, metrics, incidents, traces, faultState, regressions, blindEvalRuns] = await Promise.all([
+    const [health, metrics, incidents, traces, faultState, regressions, blindEvalRuns, auditTrail] = await Promise.all([
       fetchJSON("/api/health"),
       fetchJSON("/api/metrics?window=300"),
       fetchJSON("/api/incidents"),
@@ -423,6 +462,7 @@ async function refresh() {
       fetchJSON("/api/fault-state"),
       fetchJSON("/api/regressions"),
       fetchJSON("/api/blind-eval/runs"),
+      fetchJSON("/api/remediation-runs"),
     ]);
     renderHealth(health);
     renderMetrics(metrics);
@@ -431,6 +471,7 @@ async function refresh() {
     renderControls(faultState);
     renderRegressions(regressions);
     renderBlindEvalRuns(blindEvalRuns);
+    renderAuditTrail(auditTrail);
   } catch (err) {
     console.error("refresh failed", err);
   }

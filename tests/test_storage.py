@@ -297,3 +297,51 @@ def test_list_blind_eval_runs_orders_newest_first_and_respects_limit(tmp_path):
     runs = storage.list_blind_eval_runs(db, limit=2)
     assert len(runs) == 2
     assert runs[0]["ts"] > runs[1]["ts"]
+
+
+def test_list_remediation_runs_carries_incident_context(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    incident_id = storage.create_incident(
+        db, detector="latency_spike", severity="critical", summary="p95 latency is 8x baseline",
+        root_cause="LLM provider call is the outlier stage", confidence=0.9,
+        recommended_action="Fail over to backup backend", stage="llm_call",
+    )
+    run_id = storage.create_remediation_run(
+        db, incident_id=incident_id, action="fail_over", metric="p95_ms",
+        before_value=3500.0, started_at=time.time(),
+    )
+    storage.finish_remediation_run(db, run_id, after_value=420.0, outcome="verified", detail="improved")
+
+    runs = storage.list_remediation_runs(db)
+    assert len(runs) == 1
+    run = runs[0]
+    assert run["id"] == run_id
+    assert run["incident_id"] == incident_id
+    assert run["action"] == "fail_over"
+    assert run["outcome"] == "verified"
+    assert run["before_value"] == 3500.0
+    assert run["after_value"] == 420.0
+    assert run["incident_detector"] == "latency_spike"
+    assert run["incident_stage"] == "llm_call"
+    assert run["incident_summary"] == "p95 latency is 8x baseline"
+
+
+def test_list_remediation_runs_orders_newest_first_and_respects_limit(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    incident_id = storage.create_incident(
+        db, detector="latency_spike", severity="warning", summary="x",
+        root_cause="y", confidence=0.5, recommended_action="z", stage="llm_call",
+    )
+    now = time.time()
+    for i in range(3):
+        run_id = storage.create_remediation_run(
+            db, incident_id=incident_id, action="fail_over", metric="p95_ms",
+            before_value=1000.0, started_at=now + i,
+        )
+        storage.finish_remediation_run(db, run_id, after_value=200.0, outcome="verified", detail="ok")
+
+    runs = storage.list_remediation_runs(db, limit=2)
+    assert len(runs) == 2
+    assert runs[0]["started_at"] > runs[1]["started_at"]
