@@ -232,7 +232,53 @@ function renderEvidence(inc) {
   </div>`;
 }
 
-function renderIncidents(list) {
+function _timelineEvents(inc, regressions) {
+  // Everything at inc.ts happened inside one synchronous sweep (detect -> diagnose -> recommend
+  // -> canary), so it's one event, not several suspiciously-identical timestamps. Only events
+  // this system actually times separately show up here -- no invented sub-second ordering.
+  const events = [{
+    ts: inc.ts,
+    label: `detected ${inc.detector}${inc.stage ? `, diagnosed ${inc.stage}` : ""}`
+      + (inc.canary_result ? " (canary compared backends)" : ""),
+  }];
+
+  const run = inc.remediation_run;
+  if (run) {
+    events.push({ ts: run.started_at, label: `you approved "${_actionLabel(run.action)}"` });
+    if (run.finished_at) {
+      const verdict = run.outcome === "verified" ? "verified — recovered"
+        : run.outcome === "rolled_back" ? "rolled back — didn't help" : run.outcome;
+      const before = fmtMetric(run.metric, run.before_value);
+      const after = fmtMetric(run.metric, run.after_value != null ? run.after_value : run.before_value);
+      events.push({ ts: run.finished_at, label: `${verdict} (${run.metric}: ${before} → ${after})` });
+    }
+  }
+
+  const regression = (regressions || []).find(r => r.source_incident_id === inc.id);
+  if (regression) {
+    events.push({ ts: regression.created_at, label: "regression saved for future replay" });
+  }
+
+  if (inc.status === "ignored" && inc.resolved_ts) {
+    events.push({ ts: inc.resolved_ts, label: "ignored" });
+  }
+
+  return events.sort((a, b) => a.ts - b.ts);
+}
+
+function renderTimeline(inc, regressions) {
+  const events = _timelineEvents(inc, regressions);
+  if (events.length < 2) return ""; // "detected" alone isn't a timeline worth showing yet
+  const rows = events
+    .map(e => `<div class="timeline-row">
+      <span class="timeline-time">${new Date(e.ts * 1000).toLocaleTimeString()}</span>
+      <span>${escapeHtml(e.label)}</span>
+    </div>`)
+    .join("");
+  return `<div class="timeline">${rows}</div>`;
+}
+
+function renderIncidents(list, regressions) {
   const el = document.getElementById("incident-list");
   if (!list.length) {
     el.innerHTML = '<div class="empty">No incidents yet — inject a fault and send some test traffic.</div>';
@@ -287,6 +333,7 @@ function renderIncidents(list) {
 
       const evidenceOpen = expanded.evidence.has(String(inc.id)) ? " open" : "";
       const evidenceTableHtml = renderEvidence(inc);
+      const timelineHtml = renderTimeline(inc, regressions);
       return `
       <div class="incident-card ${inc.severity} ${inc.status}">
         <div class="incident-top">
@@ -302,6 +349,7 @@ function renderIncidents(list) {
         <div class="evidence${evidenceOpen}" id="evidence-${inc.id}">
           <div class="evidence-action">recommended action: ${escapeHtml(inc.recommended_action || "none")}</div>
           ${evidenceTableHtml}
+          ${timelineHtml}
         </div>
       </div>`;
     })
@@ -466,7 +514,7 @@ async function refresh() {
     ]);
     renderHealth(health);
     renderMetrics(metrics);
-    renderIncidents(incidents);
+    renderIncidents(incidents, regressions);
     renderTraces(traces);
     renderControls(faultState);
     renderRegressions(regressions);

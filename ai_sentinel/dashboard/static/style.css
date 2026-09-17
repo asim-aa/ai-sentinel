@@ -204,6 +204,12 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .evidence-hot span:last-child { color: var(--red); font-weight: 700; }
 
+.timeline { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); white-space: normal; }
+.timeline-row {
+  display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 2px 0; font-size: 11px;
+}
+.timeline-time { color: var(--text-dim); white-space: nowrap; }
+
 .regression-summary { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
 .regression-card {
   background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;

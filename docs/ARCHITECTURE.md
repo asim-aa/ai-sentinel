@@ -280,3 +280,39 @@ problem) and a `latency_spike` fail-over that also rolled back on this particula
 jitter meant the "after" probes didn't come back meaningfully faster than "before") — both
 rendered with their real before/after numbers and rollback detail text, not a contrived
 verified-only example.
+
+## 12. Incident timeline
+
+Pure frontend — no schema change, no new backend query. Every event the timeline shows was
+already being fetched by `refresh()` for some other section (§7's incidents, §11's audit trail's
+`remediation_runs`, §8's regressions); `app.js::_timelineEvents` just reads the same objects a
+second way and lays them out by time instead of by section. `renderIncidents` now takes the
+already-fetched regressions list as a second argument purely to look up
+`regressions.find(r => r.source_incident_id === inc.id)` — the one cross-reference the timeline
+needs that no single section already carried.
+
+This is deliberately the **coarse** timeline, not the fuller one a first pass at the idea sketched
+(separate `canary completed` / `human approved` events with independent timestamps). This system
+doesn't actually time those as separate events — detection, diagnosis, recommendation, and any
+canary comparison all happen synchronously inside one `sweep_once()` sweep (§4, §7), so they share
+exactly one timestamp (`incident.ts`) with no real sub-second ordering to report; inventing one
+would be fabricated precision, not evidence. What *is* timed separately, and what the timeline
+shows, one row per real timestamp this system already tracks:
+
+1. **Detected** (`incident.ts`) — bundles detection + diagnosis + recommendation + canary (if any)
+   into one event, since they're genuinely simultaneous; notes "canary compared backends" inline
+   when `canary_result` is present rather than fabricating a second timestamp for it.
+2. **Approved** (`remediation_runs.started_at`) — the moment you clicked an action; this system has
+   no separate "approved" step before "executed," they're the same click.
+3. **Verified or rolled back** (`remediation_runs.finished_at`) — with the real before/after metric
+   values, same wording §11's audit trail uses.
+4. **Regression saved** (`regression.created_at`), only shown when this incident is literally the
+   one `regression.record_regression` used to create or refresh a regression row — looked up by
+   `source_incident_id`, not assumed.
+
+An incident with only step 1 (freshly detected, not yet acted on) doesn't render a timeline block
+at all — one event isn't a timeline, and the evidence table above it already covers "why this
+diagnosis." Live-verified against a real `latency_spike` incident that ran the full lifecycle:
+all four events rendered in order, correct wording, correct real numbers, confirmed both by calling
+`renderTimeline` directly against live-fetched data and by expanding the actual incident card in
+the running dashboard.
