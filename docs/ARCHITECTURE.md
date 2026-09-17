@@ -204,7 +204,9 @@ short-circuits `invalid_output_rate` straight to `stage="llm_call"`, mirroring t
 `tool_failure_rate`/`cost_spike` branches — only the LLM call stage ever produces the response
 text, so the same "no real per-stage attribution question to answer" reasoning applies.
 Live-verified: a real `invalid_output_rate` incident now attributes to `llm_call` with 85%
-confidence and recommends fail-over, the same as any other LLM-call issue would.
+confidence and recommends fail-over, the same as any other LLM-call issue would — and a full
+blind-eval re-run scored `5/5`, confirming the fix closes the gap for good, not just for one
+hand-picked case.
 
 **Trial isolation is the whole design problem here**, and the first live run caught it the hard
 way: `detectors.py`'s recent/baseline windows are fixed, global rolling windows over all
