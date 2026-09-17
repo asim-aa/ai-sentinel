@@ -29,6 +29,8 @@ function fmtMetric(metric, value) {
   return fn ? fn(value ?? 0) : String(Math.round((value ?? 0) * 100) / 100);
 }
 
+const STAGE_ORDER = ["auth", "retrieval", "llm_call", "tool_call"];
+
 const ACTION_LABELS = {
   "Fail over to backup backend": "fail_over",
   "Disable retrieval": "disable_retrieval",
@@ -155,6 +157,81 @@ function renderCanarySummary(canaryResultJson) {
   </div>`;
 }
 
+function _evidenceRows(inc, ev) {
+  // The per-stage comparison path (latency_spike / error_rate_spike / timeout_spike, and the
+  // inconclusive fallback) is the only branch with a real baseline-vs-incident number for every
+  // stage -- the short-circuit branches below (tool_failure_rate, cost_spike,
+  // invalid_output_rate) attribute directly without needing that comparison, so they only ever
+  // have a single relevant number to show, not a 4-stage table.
+  if (ev.recent && ev.baseline && STAGE_ORDER.some(s => ev.recent[s])) {
+    const isLatency = inc.detector === "latency_spike";
+    return STAGE_ORDER
+      .filter(stage => ev.recent[stage] && ev.recent[stage].count >= 1)
+      .map(stage => {
+        const r = ev.recent[stage], b = ev.baseline[stage] || {};
+        const rVal = isLatency ? (r.p95_ms || 0) : (r.error_rate || 0) * 100;
+        const bVal = isLatency ? (b.p95_ms || 0) : (b.error_rate || 0) * 100;
+        const fmt = v => (isLatency ? Math.round(v) + "ms" : v.toFixed(0) + "%");
+        const delta = bVal > 0 ? Math.round(((rVal - bVal) / bVal) * 100) : (rVal > 0 ? null : 0);
+        return {
+          label: stage, baseline: fmt(bVal), incident: fmt(rVal),
+          delta: delta === null ? "n/a" : (delta >= 0 ? "+" : "") + delta + "%",
+          hot: delta !== null && delta >= 50,
+        };
+      });
+  }
+
+  if (ev.recent && ev.recent.error_rate !== undefined && !ev.baseline) {
+    const r = ev.recent;
+    return [{
+      label: "tool_call", baseline: "—",
+      incident: `${Math.round(r.error_rate * 100)}% error rate`, delta: `${r.count} calls/90s`, hot: true,
+    }];
+  }
+
+  if (ev.anomaly_evidence) {
+    const a = ev.anomaly_evidence;
+    if (a.recent && a.baseline && a.recent.avg_tokens !== undefined) {
+      return [{
+        label: "llm_call (tokens/req)", baseline: Math.round(a.baseline.avg_tokens),
+        incident: Math.round(a.recent.avg_tokens), delta: `${(a.ratio || 0).toFixed(1)}x`, hot: true,
+      }];
+    }
+    if (a.recent && a.recent.invalid_output_rate !== undefined) {
+      return [{
+        label: "llm_call (output)", baseline: "—",
+        incident: `${Math.round(a.recent.invalid_output_rate * 100)}% invalid`,
+        delta: `${a.recent.count} samples`, hot: true,
+      }];
+    }
+  }
+
+  return [];
+}
+
+function renderEvidence(inc) {
+  if (!inc.evidence) return "";
+  let ev;
+  try {
+    ev = JSON.parse(inc.evidence);
+  } catch {
+    return "";
+  }
+  const rows = _evidenceRows(inc, ev);
+  if (!rows.length) return "";
+
+  const rowsHtml = rows
+    .map(row => `<div class="evidence-row${row.hot ? " evidence-hot" : ""}">
+      <span>${escapeHtml(String(row.label))}</span><span>${escapeHtml(String(row.baseline))}</span>
+      <span>${escapeHtml(String(row.incident))}</span><span>${escapeHtml(String(row.delta))}</span>
+    </div>`)
+    .join("");
+  return `<div class="evidence-table">
+    <div class="evidence-row evidence-header"><span>stage</span><span>baseline</span><span>incident</span><span>delta</span></div>
+    ${rowsHtml}
+  </div>`;
+}
+
 function renderIncidents(list) {
   const el = document.getElementById("incident-list");
   if (!list.length) {
@@ -209,6 +286,7 @@ function renderIncidents(list) {
       const canaryHtml = renderCanarySummary(inc.canary_result);
 
       const evidenceOpen = expanded.evidence.has(String(inc.id)) ? " open" : "";
+      const evidenceTableHtml = renderEvidence(inc);
       return `
       <div class="incident-card ${inc.severity} ${inc.status}">
         <div class="incident-top">
@@ -221,7 +299,10 @@ function renderIncidents(list) {
         ${canaryHtml}
         <div class="incident-actions">${actions.join("")}</div>
         ${verificationHtml}
-        <div class="evidence${evidenceOpen}" id="evidence-${inc.id}">recommended action: ${escapeHtml(inc.recommended_action || "none")}</div>
+        <div class="evidence${evidenceOpen}" id="evidence-${inc.id}">
+          <div class="evidence-action">recommended action: ${escapeHtml(inc.recommended_action || "none")}</div>
+          ${evidenceTableHtml}
+        </div>
       </div>`;
     })
     .join("");

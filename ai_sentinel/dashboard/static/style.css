@@ -191,6 +191,18 @@ button:disabled { opacity: 0.4; cursor: default; }
   background: var(--panel-2); border-radius: 6px; padding: 8px; white-space: pre-wrap; display: none;
 }
 .evidence.open { display: block; }
+.evidence-action { margin-bottom: 6px; }
+
+.evidence-table { white-space: normal; }
+.evidence-row {
+  display: grid; grid-template-columns: 1.3fr 1fr 1fr 0.9fr; gap: 8px;
+  padding: 3px 0; align-items: center;
+}
+.evidence-row:not(:last-child) { border-bottom: 1px solid var(--border); }
+.evidence-header {
+  color: var(--text-dim); text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.05em;
+}
+.evidence-hot span:last-child { color: var(--red); font-weight: 700; }
 
 .regression-summary { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
 .regression-card {

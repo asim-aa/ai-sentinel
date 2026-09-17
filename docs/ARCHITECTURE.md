@@ -227,3 +227,36 @@ trial's recent window before that one starts, and picks fault modes from a shuff
 default trials guarantee coverage of every fault type instead of risking wasted repeats. End to
 end this costs a genuine ~10 minutes (a 95s warm-up plus 4 gaps at ~100s each) — slow on purpose,
 in exchange for testing the exact same windowed detection a real incident goes through.
+
+## 10. RCA evidence panel
+
+`RootCause.evidence` (§4) was always computed at diagnosis time but never persisted — `engine.py`
+only wrote `cause.explanation`, `cause.confidence`, and `cause.stage` into the `incidents` table,
+so the actual numbers behind a diagnosis existed for exactly as long as the sweep that produced
+them. `storage.create_incident` now takes an `evidence` param (JSON-serialized into a new
+`evidence` column, same migration treatment as every other incident column added after the table
+already existed on a deployed database — see `_INCIDENT_MIGRATIONS`), and `sweep_once` passes
+`cause.evidence` straight through. Clicking **Investigate**/**Details** on an incident card now
+renders it as a table, not just a "recommended action" line.
+
+The evidence shape isn't uniform across detectors, and the frontend (`app.js::_evidenceRows`)
+branches on what's actually there rather than assuming one shape:
+
+- **Per-stage comparison** (`latency_spike`/`error_rate_spike`/`timeout_spike`, and the
+  inconclusive fallback) — `evidence.recent`/`evidence.baseline` are keyed by all four pipeline
+  stages, so this renders the full stage / baseline / incident / delta table, using whichever
+  metric (`p95_ms` vs `error_rate`) the detector actually compared, and flags the dominant stage's
+  row as the outlier.
+- **`tool_failure_rate`** — a single-stage `recent` dict with no baseline at all (the detector
+  never compares against history, just checks the current tool_call error rate) — renders as one
+  row with a `—` in the baseline column rather than a fabricated comparison.
+- **`cost_spike` / `invalid_output_rate`** — `evidence.anomaly_evidence` wraps chat-request-level
+  (not per-stage) `recent`/`baseline` dicts, since both detectors attribute directly to `llm_call`
+  without a real per-stage question to answer (§7, §9) — renders as one row keyed to whichever
+  field is present (`avg_tokens` or `invalid_output_rate`).
+
+Live-verified: expanded the evidence panel on a real `latency_spike` incident (full four-stage
+table, `llm_call` correctly highlighted as the +883% outlier), a real `cost_spike` incident
+(single-row token comparison), and confirmed the `tool_failure_rate` row shape directly against
+live incident data — the three structurally distinct branches in `_evidenceRows`, not just one
+happy path.

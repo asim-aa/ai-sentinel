@@ -99,3 +99,19 @@ def test_sweep_once_skips_canary_without_a_demo_url(tmp_path):
 
     mock_canary.assert_not_called()
     assert created[0]["canary_result"] is None
+
+
+def test_sweep_once_persists_the_diagnosis_evidence(tmp_path):
+    """The RCA evidence panel reads this straight off the incident row -- it has to survive the
+    trip from rootcause.diagnose()'s in-memory RootCause.evidence into storage."""
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+    _seed_llm_call_latency_spike(db)
+
+    with patch("ai_sentinel.alerts.emit_alert", new_callable=AsyncMock):
+        created = asyncio.run(engine.sweep_once(db))
+
+    assert len(created) == 1
+    evidence = json.loads(created[0]["evidence"])
+    assert "recent" in evidence and "baseline" in evidence
+    assert evidence["recent"]["llm_call"]["p95_ms"] > evidence["baseline"]["llm_call"]["p95_ms"]

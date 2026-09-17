@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import time
 
@@ -87,6 +88,34 @@ def test_update_incident_status_reopens_cleanly(tmp_path):
     assert storage.open_incident_for_detector(db, "latency_spike") is None
 
 
+def test_create_incident_round_trips_evidence(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    evidence = {
+        "recent": {"llm_call": {"count": 5, "error_rate": 0.0, "p50_ms": 640, "p95_ms": 891}},
+        "baseline": {"llm_call": {"count": 6, "error_rate": 0.0, "p50_ms": 100, "p95_ms": 104}},
+        "deviations": {"llm_call": 8.57},
+    }
+    incident_id = storage.create_incident(
+        db, detector="latency_spike", severity="critical", summary="x",
+        root_cause="y", confidence=0.9, recommended_action="z", evidence=evidence,
+    )
+
+    incident = storage.get_incident(db, incident_id)
+    assert json.loads(incident["evidence"]) == evidence
+
+
+def test_create_incident_evidence_defaults_to_none(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    incident_id = storage.create_incident(
+        db, detector="tool_failure_rate", severity="warning", summary="x",
+        root_cause="y", confidence=0.9, recommended_action="z",
+    )
+
+    assert storage.get_incident(db, incident_id)["evidence"] is None
+
+
 def test_init_db_migrates_an_incidents_table_predating_the_new_columns(tmp_path):
     """Reproduces the real deploy bug this caught: a database created before `stage`,
     `merged_detectors`, and `canary_result` existed has an `incidents` table that
@@ -113,10 +142,12 @@ def test_init_db_migrates_an_incidents_table_predating_the_new_columns(tmp_path)
     incident_id = storage.create_incident(
         db, detector="latency_spike", severity="warning", summary="x",
         root_cause="y", confidence=0.5, recommended_action="z", stage="llm_call",
+        evidence={"recent": {"llm_call": {"p95_ms": 900}}},
     )
     incident = storage.get_incident(db, incident_id)
     assert incident["stage"] == "llm_call"
     assert incident["merged_detectors"] == "latency_spike"
+    assert incident["evidence"] == '{"recent": {"llm_call": {"p95_ms": 900}}}'
 
 
 def test_open_incident_for_stage_finds_recent_open_incident(tmp_path):

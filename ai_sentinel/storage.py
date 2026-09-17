@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS incidents (
     resolved_ts REAL,
     stage TEXT,
     merged_detectors TEXT,
-    canary_result TEXT
+    canary_result TEXT,
+    evidence TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
 CREATE INDEX IF NOT EXISTS idx_incidents_stage ON incidents(stage);
@@ -124,6 +125,7 @@ _INCIDENT_MIGRATIONS = {
     "stage": "TEXT",
     "merged_detectors": "TEXT",
     "canary_result": "TEXT",
+    "evidence": "TEXT",
 }
 
 
@@ -328,15 +330,17 @@ def create_incident(
     ts: float | None = None,
     stage: str | None = None,
     canary_result: str | None = None,
+    evidence: dict | None = None,
 ) -> int:
     with _connect(db_path) as conn:
         cur = conn.execute(
             """INSERT INTO incidents
                (ts, detector, severity, summary, root_cause, confidence, recommended_action, status,
-                stage, merged_detectors, canary_result)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)""",
+                stage, merged_detectors, canary_result, evidence)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)""",
             (ts if ts is not None else time.time(), detector, severity, summary, root_cause,
-             confidence, recommended_action, stage, detector, canary_result),
+             confidence, recommended_action, stage, detector, canary_result,
+             json.dumps(evidence) if evidence is not None else None),
         )
         return cur.lastrowid
 

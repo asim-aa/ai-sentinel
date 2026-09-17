@@ -4,9 +4,31 @@ A reliability engine for AI services: three-level health checks, threshold-based
 detection, per-stage root-cause diagnosis, and one-click remediation — built around a small
 instrumented demo AI service so the whole loop is runnable and demoable, not just described.
 
-**Architecture, in six diagrams:** see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the
-full write-up, or the [published diagram set](https://claude.ai/artifact/6CK9V5RV3fi4WhjNauvZnG)
-for the rendered version.
+**Architecture, in diagrams:** see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full
+write-up, or the [published diagram set](https://claude.ai/artifact/6CK9V5RV3fi4WhjNauvZnG) for
+the rendered version.
+
+## Evidence
+
+Claims that are actually checked, not just described:
+
+- **95 automated tests**, passing both locally and on a persistent deployment.
+- **All 5 supported fault classes correctly attributed in a full blind fault-injection pass** —
+  the fault is withheld from detection and diagnosis, and root-cause attribution is graded against
+  the hidden ground truth afterward, not just exercised and assumed correct (see
+  [Blind fault-injection eval](#blind-fault-injection-eval) below).
+- **Verified remediation with automatic rollback** — an action isn't marked "fixed" until real
+  post-action traffic confirms the metric actually recovered; if it didn't, the system reverts
+  itself and says so.
+- **Regression replay** — a verified fix becomes a fixture that gets re-run against whatever code
+  is running later, so a future change that quietly breaks a working fix gets caught.
+- **Real dual-provider failover** (Claude + OpenAI when both are configured) — a genuine
+  cross-provider switch, not a same-model toggle.
+- **Three rolling-window timing bugs found only by running the system live**, not by reading the
+  diff — the same underlying bug class (unrelated activity bleeding across a measurement window it
+  wasn't scoped to exclude) independently rediscovered three times in three different features.
+- **Deployed persistently** on a shared GPU cluster box via user-level systemd — no sudo, survives
+  a reboot.
 
 ## The idea
 

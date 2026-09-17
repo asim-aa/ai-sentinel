@@ -55,6 +55,7 @@ async def sweep_once(db_path: str, demo_url: str | None = None) -> list[dict]:
             recommended_action=action.label,
             stage=cause.stage,
             canary_result=canary_result,
+            evidence=cause.evidence,
         )
         await alerts.emit_alert(anomaly, cause, action)
         created.append(storage.get_incident(db_path, incident_id))
