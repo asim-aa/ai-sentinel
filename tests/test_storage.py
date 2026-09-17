@@ -345,3 +345,93 @@ def test_list_remediation_runs_orders_newest_first_and_respects_limit(tmp_path):
     runs = storage.list_remediation_runs(db, limit=2)
     assert len(runs) == 2
     assert runs[0]["started_at"] > runs[1]["started_at"]
+
+
+def test_reliability_summary_is_all_zero_with_no_history(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+
+    summary = storage.reliability_summary(db, window_s=86400)
+    assert summary["incident_count"] == 0
+    assert summary["verified_count"] == 0
+    assert summary["rolled_back_count"] == 0
+    assert summary["median_recovery_s"] is None
+
+
+def test_reliability_summary_counts_outcomes_and_computes_median_recovery(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    now = time.time()
+
+    # incident 1: detected 100s ago, verified 40s ago -> recovered in 60s
+    inc1 = storage.create_incident(
+        db, detector="latency_spike", severity="critical", summary="x", root_cause="y",
+        confidence=0.9, recommended_action="z", ts=now - 100,
+    )
+    run1 = storage.create_remediation_run(
+        db, incident_id=inc1, action="fail_over", metric="p95_ms",
+        before_value=4000.0, started_at=now - 95,
+    )
+    storage.finish_remediation_run(
+        db, run1, after_value=400.0, outcome="verified", detail="improved", finished_at=now - 40,
+    )
+
+    # incident 2: detected 80s ago, verified 60s ago -> recovered in 20s
+    inc2 = storage.create_incident(
+        db, detector="tool_failure_rate", severity="warning", summary="x", root_cause="y",
+        confidence=0.9, recommended_action="z", ts=now - 80,
+    )
+    run2 = storage.create_remediation_run(
+        db, incident_id=inc2, action="disable_tools", metric="error_rate",
+        before_value=0.5, started_at=now - 75,
+    )
+    storage.finish_remediation_run(
+        db, run2, after_value=0.0, outcome="verified", detail="improved", finished_at=now - 60,
+    )
+
+    # incident 3: rolled back -- doesn't count toward recovery time
+    inc3 = storage.create_incident(
+        db, detector="cost_spike", severity="warning", summary="x", root_cause="y",
+        confidence=0.85, recommended_action="z", ts=now - 50,
+    )
+    run3 = storage.create_remediation_run(
+        db, incident_id=inc3, action="fail_over", metric="avg_tokens",
+        before_value=40.0, started_at=now - 45,
+    )
+    storage.finish_remediation_run(
+        db, run3, after_value=45.0, outcome="rolled_back", detail="did not improve", finished_at=now - 30,
+    )
+
+    summary = storage.reliability_summary(db, window_s=86400)
+    assert summary["incident_count"] == 3
+    assert summary["verified_count"] == 2
+    assert summary["rolled_back_count"] == 1
+    assert summary["median_recovery_s"] == 20.0  # nearest-rank median of [20, 60] -> the lower one
+
+
+def test_reliability_summary_respects_the_window(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    now = time.time()
+
+    old_incident = storage.create_incident(
+        db, detector="latency_spike", severity="critical", summary="old", root_cause="y",
+        confidence=0.9, recommended_action="z", ts=now - 200,
+    )
+    old_run = storage.create_remediation_run(
+        db, incident_id=old_incident, action="fail_over", metric="p95_ms",
+        before_value=4000.0, started_at=now - 195,
+    )
+    storage.finish_remediation_run(
+        db, old_run, after_value=400.0, outcome="verified", detail="improved", finished_at=now - 190,
+    )
+
+    storage.create_incident(
+        db, detector="tool_failure_rate", severity="warning", summary="recent", root_cause="y",
+        confidence=0.9, recommended_action="z", ts=now - 10,
+    )
+
+    summary = storage.reliability_summary(db, window_s=100)  # only the last 100s
+    assert summary["incident_count"] == 1  # the old one (ts=now-200) is outside the window
+    assert summary["verified_count"] == 0  # its remediation_run also finished outside the window
+    assert summary["median_recovery_s"] is None

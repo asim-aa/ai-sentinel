@@ -316,6 +316,39 @@ def checks_stats(db_path: str, window_s: float, end_ts: float | None = None) -> 
     }
 
 
+def reliability_summary(db_path: str, window_s: float, end_ts: float | None = None) -> dict:
+    """How the system has been doing lately, not just right now: incidents raised, how many
+    remediations actually verified vs. had to roll back, and how long recovery took -- the "24h
+    reliability card" view, same recent-window shape as metrics_summary/checks_stats above."""
+    now = end_ts if end_ts is not None else time.time()
+    start = now - window_s
+    with _connect(db_path) as conn:
+        incident_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM incidents WHERE ts >= ? AND ts <= ?", (start, now)
+        ).fetchone()["c"]
+        runs = conn.execute(
+            """SELECT remediation_runs.outcome AS outcome, remediation_runs.finished_at AS finished_at,
+                      incidents.ts AS incident_ts
+               FROM remediation_runs JOIN incidents ON incidents.id = remediation_runs.incident_id
+               WHERE remediation_runs.finished_at IS NOT NULL
+                 AND remediation_runs.finished_at >= ? AND remediation_runs.finished_at <= ?""",
+            (start, now),
+        ).fetchall()
+
+    runs = [dict(r) for r in runs]
+    verified = [r for r in runs if r["outcome"] == "verified"]
+    rolled_back = [r for r in runs if r["outcome"] == "rolled_back"]
+    recovery_times = [r["finished_at"] - r["incident_ts"] for r in verified]
+
+    return {
+        "window_s": window_s,
+        "incident_count": incident_count,
+        "verified_count": len(verified),
+        "rolled_back_count": len(rolled_back),
+        "median_recovery_s": _percentile(recovery_times, 50) if recovery_times else None,
+    }
+
+
 # -------------------------------------------------------------- incidents --
 
 def create_incident(
@@ -446,12 +479,13 @@ def create_remediation_run(
 
 
 def finish_remediation_run(
-    db_path: str, run_id: int, *, after_value: float, outcome: str, detail: str
+    db_path: str, run_id: int, *, after_value: float, outcome: str, detail: str,
+    finished_at: float | None = None,
 ) -> None:
     with _connect(db_path) as conn:
         conn.execute(
             "UPDATE remediation_runs SET after_value = ?, outcome = ?, detail = ?, finished_at = ? WHERE id = ?",
-            (after_value, outcome, detail, time.time(), run_id),
+            (after_value, outcome, detail, finished_at if finished_at is not None else time.time(), run_id),
         )
 
 

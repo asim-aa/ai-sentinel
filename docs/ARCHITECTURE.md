@@ -316,3 +316,27 @@ diagnosis." Live-verified against a real `latency_spike` incident that ran the f
 all four events rendered in order, correct wording, correct real numbers, confirmed both by calling
 `renderTimeline` directly against live-fetched data and by expanding the actual incident card in
 the running dashboard.
+
+## 13. 24h reliability card
+
+Same shape as §2's health strip and the 5-minute metrics grid, at a longer window and one new
+data source. `storage.reliability_summary` rolls up incidents and remediation outcomes over a
+window — incident count, how many remediations actually verified vs. had to roll back, and a
+median recovery time (`finished_at - incident.ts` across `verified` runs, via the same
+`_percentile` helper the latency tiles already use, not a hand-rolled mean) — and `GET
+/api/reliability` composes it with `metrics_summary`/`checks_stats` at the same window (default
+86400s), mirroring `/api/metrics`'s existing `{requests, synthetic}` shape plus a new `incidents`
+key. The dashboard's new "Reliability (last 24h)" grid reuses the same `.tile` styling as the
+5-minute metrics grid above it, deliberately **without** sparklines — those tiles' rolling history
+makes sense for a 5-minute window that visibly moves poll to poll; a 24-hour rolling aggregate
+barely changes between one 3-second poll and the next, and a "trend line" built from that noise
+would be misleading, not informative.
+
+`finish_remediation_run` gained an optional `finished_at` override (defaulting to `time.time()`
+exactly as before) purely so `reliability_summary`'s median-recovery computation could be tested
+deterministically — the same testability pattern every other time-windowed function in this file
+already follows (`ts`, `end_ts`, etc.), just not one this particular function had needed before
+this feature required backdating a "recovery" for a test. Live-verified against a real
+`tool_failure_rate` incident that ran the full remediate → verify cycle: the card correctly showed
+4 incidents, 1 verified recovery, 0 rollbacks, and a 15s median recovery time, all matching what
+`/api/reliability` returned directly.

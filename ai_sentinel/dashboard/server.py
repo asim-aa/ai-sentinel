@@ -103,6 +103,15 @@ def api_metrics(window: int = 300):
     }
 
 
+@app.get("/api/reliability")
+def api_reliability(window: int = 86400):
+    return {
+        "requests": storage.metrics_summary(DB_PATH, window),
+        "synthetic": storage.checks_stats(DB_PATH, window),
+        "incidents": storage.reliability_summary(DB_PATH, window),
+    }
+
+
 @app.get("/api/traces")
 def api_traces(limit: int = 20):
     return storage.recent_traces(DB_PATH, limit)

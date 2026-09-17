@@ -29,6 +29,13 @@ function fmtMetric(metric, value) {
   return fn ? fn(value ?? 0) : String(Math.round((value ?? 0) * 100) / 100);
 }
 
+function fmtDuration(s) {
+  if (s == null) return "—";
+  if (s < 60) return Math.round(s) + "s";
+  if (s < 3600) return Math.round(s / 60) + "m";
+  return (s / 3600).toFixed(1) + "h";
+}
+
 const STAGE_ORDER = ["auth", "retrieval", "llm_call", "tool_call"];
 
 const ACTION_LABELS = {
@@ -120,6 +127,27 @@ function renderMetrics(data) {
       ${sparkline(history[tile.key], level)}
     </div>`;
   }).join("");
+}
+
+function renderReliability(data) {
+  const el = document.getElementById("reliability-grid");
+  const r = data.requests, s = data.synthetic, inc = data.incidents;
+  // No sparklines here on purpose -- these are 24h rolling aggregates, so poll-to-poll they
+  // barely move, and a "trend" line built from that would just be misleading noise.
+  const tiles = [
+    { label: "Availability (24h)", value: (r.availability * 100).toFixed(1) + "%" },
+    { label: "Checks passed", value: `${s.passed} / ${s.count}` },
+    { label: "Incidents", value: String(inc.incident_count) },
+    { label: "Verified recoveries", value: String(inc.verified_count) },
+    { label: "Rolled-back actions", value: String(inc.rolled_back_count) },
+    { label: "Median recovery time", value: fmtDuration(inc.median_recovery_s) },
+  ];
+  el.innerHTML = tiles
+    .map(t => `<div class="tile">
+      <div class="label">${escapeHtml(t.label)}</div>
+      <div class="value">${escapeHtml(t.value)}</div>
+    </div>`)
+    .join("");
 }
 
 function renderControls(state) {
@@ -502,9 +530,10 @@ function renderTraces(list) {
 
 async function refresh() {
   try {
-    const [health, metrics, incidents, traces, faultState, regressions, blindEvalRuns, auditTrail] = await Promise.all([
+    const [health, metrics, reliability, incidents, traces, faultState, regressions, blindEvalRuns, auditTrail] = await Promise.all([
       fetchJSON("/api/health"),
       fetchJSON("/api/metrics?window=300"),
+      fetchJSON("/api/reliability"),
       fetchJSON("/api/incidents"),
       fetchJSON("/api/traces?limit=15"),
       fetchJSON("/api/fault-state"),
@@ -514,6 +543,7 @@ async function refresh() {
     ]);
     renderHealth(health);
     renderMetrics(metrics);
+    renderReliability(reliability);
     renderIncidents(incidents, regressions);
     renderTraces(traces);
     renderControls(faultState);

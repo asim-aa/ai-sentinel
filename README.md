@@ -12,7 +12,7 @@ the rendered version.
 
 Claims that are actually checked, not just described:
 
-- **95 automated tests**, passing both locally and on a persistent deployment.
+- **100 automated tests**, passing both locally and on a persistent deployment.
 - **All 5 supported fault classes correctly attributed in a full blind fault-injection pass** —
   the fault is withheld from detection and diagnosis, and root-cause attribution is graded against
   the hidden ground truth afterward, not just exercised and assumed correct (see
