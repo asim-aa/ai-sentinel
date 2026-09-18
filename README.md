@@ -212,7 +212,7 @@ same as any other LLM-call issue.
 real scale proved why that caveat mattered.** A 50-trial run (10 per fault type) scored `68%`
 overall: a clean `10/10` on the three fault types whose detectors only ever look at the recent
 window, but `2/10` on the two that depend on baseline (`slow_llm`, `vector_db_slow`). Both scored
-correct on their first one or two occurrences, then missed every trial for the rest of a two-hour
+correct on their first one or two occurrences, then missed every trial for the rest of a ~90-minute
 run — an unresolved incident from early in the run kept excluding time from the baseline with no
 upper bound, eventually excluding the *entire* baseline window and permanently blinding that
 detector, not just to the original fault but to any later occurrence of it. A run under ~15 minutes

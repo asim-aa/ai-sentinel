@@ -89,7 +89,7 @@ query, dropping `baseline["count"]` below `MIN_SAMPLES` and permanently blinding
 not just to the original fault, but to any later, unrelated occurrence of the same fault. Caught
 live on kolmogorov's real database, not just in a seeded test: a 50-trial blind-eval run left four
 `latency_spike` incidents open, and every `slow_llm`/`vector_db_slow` trial after roughly the
-15-minute mark scored `not_detected` for the rest of the two-hour run — 8/10 misses on both fault
+15-minute mark scored `not_detected` for the rest of the ~90-minute run — 8/10 misses on both fault
 types, against a clean 10/10 on the three fault types whose detectors don't read baseline at all.
 Fixed by capping the exclusion's end at `min(now, incident_ts + lookback_s)`: a recent, genuinely
 ongoing incident behaves exactly as before, but past the cap the excluded range stops growing and
@@ -253,7 +253,7 @@ exactly why that caveat mattered.** A 50-trial run (`trial_count=50`, 10 per fau
 depend on baseline (`slow_llm`, `vector_db_slow`, both routed through `detect_latency_spike`). The
 pattern wasn't noise: both latency fault types scored correct for their first one or two
 occurrences, then missed every single trial from roughly the 15-minute mark onward, for the rest of
-the two-hour run — the unbounded-exclusion bug in `excluded_periods` described in §4, triggered
+the ~90-minute run — the unbounded-exclusion bug in `excluded_periods` described in §4, triggered
 here because nothing in an unattended eval run ever resolves the incidents it causes. A run
 under ~15 minutes (including the original `n=5` pass) structurally can't hit this, since it needs
 an incident older than the baseline lookback to even exist. Fixed in §4; not yet re-confirmed with
