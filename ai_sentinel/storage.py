@@ -425,7 +425,17 @@ def excluded_periods(
     computation can exclude them instead of being pulled toward a fault that's still ongoing
     (or only recently stopped). Each incident's range starts `anomaly_lead_s` before it was
     created — roughly the trigger window that led to it — and ends at resolution, or now if
-    it's still open."""
+    it's still open, capped at `lookback_s` past its own start.
+
+    That cap matters: an incident that's never resolved (nobody clicked remediate, or an
+    unattended run never gets the chance to) would otherwise keep excluding all the way to
+    "now" forever. Once it's open longer than `lookback_s`, its exclusion already fully covers
+    the current baseline window regardless of the cap -- so capping it there doesn't change
+    that case, but it does mean that *past* the cap, the excluded range stops growing and
+    eventually ages out of the baseline window on its own, the same way a resolved incident
+    would. Without the cap, one stale open incident permanently blinds this detector to any
+    later, unrelated occurrence of the same fault -- found live after an unattended blind-eval
+    run left several incidents open for hours."""
     now = time.time()
     with _connect(db_path) as conn:
         rows = conn.execute(
@@ -434,7 +444,10 @@ def excluded_periods(
             (detector, now - lookback_s),
         ).fetchall()
     return [
-        (r["ts"] - anomaly_lead_s, r["resolved_ts"] if r["status"] != "open" else now)
+        (
+            r["ts"] - anomaly_lead_s,
+            r["resolved_ts"] if r["status"] != "open" else min(now, r["ts"] + lookback_s),
+        )
         for r in rows
     ]
 

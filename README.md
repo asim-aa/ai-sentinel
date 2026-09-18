@@ -12,11 +12,14 @@ the rendered version.
 
 Claims that are actually checked, not just described:
 
-- **117 automated tests**, passing both locally and on a persistent deployment.
-- **All 5 supported fault classes correctly attributed in a full blind fault-injection pass** —
-  the fault is withheld from detection and diagnosis, and root-cause attribution is graded against
-  the hidden ground truth afterward, not just exercised and assumed correct (see
-  [Blind fault-injection eval](#blind-fault-injection-eval) below).
+- **118 automated tests**, passing both locally and on a persistent deployment.
+- **A 50-trial blind fault-injection run at real scale found a genuine detection gap that a single
+  5-trial pass had missed** — the fault is withheld from detection and diagnosis, and root-cause
+  attribution is graded against the hidden ground truth afterward, not just exercised and assumed
+  correct. Full scale scored `68%`, not the misleadingly perfect `100%` one pass had shown,
+  isolating one specific, reproducible cause that's since been fixed and verified against the exact
+  live incidents that caused it (see [Blind fault-injection eval](#blind-fault-injection-eval)
+  below).
 - **Verified remediation with automatic rollback** — an action isn't marked "fixed" until real
   post-action traffic confirms the metric actually recovered; if it didn't, the system reverts
   itself and says so.
@@ -24,9 +27,9 @@ Claims that are actually checked, not just described:
   is running later, so a future change that quietly breaks a working fix gets caught.
 - **Real dual-provider failover** (Claude + OpenAI when both are configured) — a genuine
   cross-provider switch, not a same-model toggle.
-- **Three rolling-window timing bugs found only by running the system live**, not by reading the
-  diff — the same underlying bug class (unrelated activity bleeding across a measurement window it
-  wasn't scoped to exclude) independently rediscovered three times in three different features.
+- **Four rolling-window timing bugs found only by running the system live**, not by reading the
+  diff — the same underlying bug class (a measurement window either not scoped tightly enough, or
+  never bounded at all) independently rediscovered four times across four different features.
 - **Deployed persistently** on a shared GPU cluster box via user-level systemd — no sudo, survives
   a reboot.
 - **An LLM-as-judge relevance eval, with no mock fallback** — unlike the demo backend, judging
@@ -204,6 +207,20 @@ produces the response text, so there's no real per-stage question to answer ther
 than excluding the fault from the eval's pool to make the score look better. Live-verified: a real
 `invalid_output_rate` incident now correctly attributes to `llm_call` and recommends fail-over,
 same as any other LLM-call issue.
+
+**One pass through the 5 fault types isn't a statistically powered claim, and running the eval at
+real scale proved why that caveat mattered.** A 50-trial run (10 per fault type) scored `68%`
+overall: a clean `10/10` on the three fault types whose detectors only ever look at the recent
+window, but `2/10` on the two that depend on baseline (`slow_llm`, `vector_db_slow`). Both scored
+correct on their first one or two occurrences, then missed every trial for the rest of a two-hour
+run — an unresolved incident from early in the run kept excluding time from the baseline with no
+upper bound, eventually excluding the *entire* baseline window and permanently blinding that
+detector, not just to the original fault but to any later occurrence of it. A run under ~15 minutes
+(including the original 5-trial pass) can't hit this — it needs an incident older than the baseline
+lookback to even exist. Fixed by capping the exclusion at the lookback window's own length instead
+of letting it grow forever; verified against kolmogorov's actual stale incidents from that run,
+not just a fresh test — baseline sample count went from 0 to 15 for the same detector, same
+incidents, before and after the fix.
 
 ## Quality eval
 

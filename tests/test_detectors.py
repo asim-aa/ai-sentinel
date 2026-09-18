@@ -103,6 +103,30 @@ def test_baseline_excludes_periods_covered_by_open_incidents(tmp_path):
     assert anomaly.severity == "critical"
 
 
+def test_open_incident_older_than_the_lookback_no_longer_blinds_the_detector(tmp_path):
+    """Companion to the test above: an incident that's still 'open' but has been for far longer
+    than the lookback window it's meant to protect must not keep excluding all the way to 'now'
+    forever -- that swallows the entire baseline (count drops below MIN_SAMPLES) and permanently
+    blinds this detector to any later, unrelated spike, not just the original one. Found live:
+    incidents left open by an unattended blind-eval run silently blinded latency_spike detection
+    for the rest of a 2-hour run, on real traffic, not just in a seeded test."""
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+    lookback = detectors.BASELINE_WINDOW_S + detectors.RECENT_WINDOW_S
+    _seed(db, "chat_request", 6, 300, offset_start=750, spacing=25)  # clean baseline history
+    _seed(db, "chat_request", 5, 3000, offset_start=10, spacing=8)  # a fresh, unrelated spike
+
+    storage.create_incident(
+        db, detector="latency_spike", severity="critical",
+        summary="a much older, never-resolved incident", root_cause="x", confidence=0.9,
+        recommended_action="Fail over to backup backend",
+        ts=time.time() - (lookback + 1000),
+    )
+
+    anomaly = detectors.detect_latency_spike(db)
+    assert anomaly is not None
+
+
 def test_cost_spike_detected(tmp_path):
     db = str(tmp_path / "t.db")
     storage.init_db(db)

@@ -80,6 +80,24 @@ self-referential design (the system excludes its own detected anomalies from its
 covered by regression tests in both `tests/test_detectors.py` and `tests/test_rootcause.py` that
 seed a polluted baseline and assert detection fails without an incident row and succeeds with one.
 
+**A second limitation in that same fix, found later by running the blind eval at real scale (§9),
+since also fixed:** the exclusion above had no upper bound — an incident that's still `open`
+excludes all the way to "now," however long ago it was created. An incident that never gets
+resolved (nothing in an unattended run clicks remediate) keeps growing that exclusion forever, and
+once it's open longer than the lookback window, the exclusion fully swallows the current baseline
+query, dropping `baseline["count"]` below `MIN_SAMPLES` and permanently blinding that detector —
+not just to the original fault, but to any later, unrelated occurrence of the same fault. Caught
+live on kolmogorov's real database, not just in a seeded test: a 50-trial blind-eval run left four
+`latency_spike` incidents open, and every `slow_llm`/`vector_db_slow` trial after roughly the
+15-minute mark scored `not_detected` for the rest of the two-hour run — 8/10 misses on both fault
+types, against a clean 10/10 on the three fault types whose detectors don't read baseline at all.
+Fixed by capping the exclusion's end at `min(now, incident_ts + lookback_s)`: a recent, genuinely
+ongoing incident behaves exactly as before, but past the cap the excluded range stops growing and
+eventually ages out of the baseline window on its own, the same way a resolved incident would.
+Verified against kolmogorov's actual stale incidents from that run (not just a fresh seeded test):
+baseline sample count went from 0 to 15 for the same detector, same incidents, same live database,
+before and after the fix.
+
 Every incident also goes through `ai_sentinel/alerts.py::emit_alert`, which always logs a
 structured line and, if configured, delivers to Slack (`SLACK_WEBHOOK_URL` — a proper Block Kit
 message with a severity-colored bar matching the dashboard's own palette) and/or a generic
@@ -227,6 +245,19 @@ trial's recent window before that one starts, and picks fault modes from a shuff
 default trials guarantee coverage of every fault type instead of risking wasted repeats. End to
 end this costs a genuine ~10 minutes (a 95s warm-up plus 4 gaps at ~100s each) — slow on purpose,
 in exchange for testing the exact same windowed detection a real incident goes through.
+
+**`5/5` was one pass, not a statistically powered claim, and running the eval at real scale proved
+exactly why that caveat mattered.** A 50-trial run (`trial_count=50`, 10 per fault type instead of
+1) scored `68%` overall — `10/10` on the three fault types whose detectors are recent-window-only
+(`invalid_output_rate`, `error_rate_spike`, `tool_failure_rate`), but only `2/10` on the two that
+depend on baseline (`slow_llm`, `vector_db_slow`, both routed through `detect_latency_spike`). The
+pattern wasn't noise: both latency fault types scored correct for their first one or two
+occurrences, then missed every single trial from roughly the 15-minute mark onward, for the rest of
+the two-hour run — the unbounded-exclusion bug in `excluded_periods` described in §4, triggered
+here because nothing in an unattended eval run ever resolves the incidents it causes. A run
+under ~15 minutes (including the original `n=5` pass) structurally can't hit this, since it needs
+an incident older than the baseline lookback to even exist. Fixed in §4; not yet re-confirmed with
+a second full-scale run as of this writing.
 
 ## 10. RCA evidence panel
 
