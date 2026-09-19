@@ -24,7 +24,11 @@ CORRELATION_WINDOW_S = 60
 async def sweep_once(db_path: str, demo_url: str | None = None) -> list[dict]:
     created = []
     for anomaly in detectors.run_detectors(db_path):
-        if storage.open_incident_for_detector(db_path, anomaly.detector, cooldown_s=INCIDENT_COOLDOWN_S):
+        open_incident = storage.open_incident_for_detector(
+            db_path, anomaly.detector, cooldown_s=INCIDENT_COOLDOWN_S
+        )
+        if open_incident:
+            storage.touch_incident(db_path, open_incident["id"])
             continue
 
         cause = rootcause.diagnose(db_path, anomaly)

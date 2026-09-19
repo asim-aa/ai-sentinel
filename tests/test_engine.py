@@ -115,3 +115,24 @@ def test_sweep_once_persists_the_diagnosis_evidence(tmp_path):
     evidence = json.loads(created[0]["evidence"])
     assert "recent" in evidence and "baseline" in evidence
     assert evidence["recent"]["llm_call"]["p95_ms"] > evidence["baseline"]["llm_call"]["p95_ms"]
+
+
+def test_sweep_once_touches_an_open_incident_its_detector_is_still_firing_for(tmp_path):
+    """A suppressed re-fire is the only evidence storage.excluded_periods gets that the fault is
+    still going, so it has to be recorded on the incident that suppressed it."""
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+    _seed_llm_call_latency_spike(db)
+    incident_id = storage.create_incident(
+        db, detector="latency_spike", severity="critical", summary="p95 up",
+        root_cause="x", confidence=0.9, recommended_action="Fail over to backup backend",
+        stage="llm_call", ts=time.time() - 30,
+    )
+    assert storage.get_incident(db, incident_id)["last_seen_ts"] is None
+
+    before = time.time()
+    with patch("ai_sentinel.alerts.emit_alert", new_callable=AsyncMock):
+        created = asyncio.run(engine.sweep_once(db))
+
+    assert created == []  # suppressed by the cooldown, not a new incident
+    assert storage.get_incident(db, incident_id)["last_seen_ts"] >= before

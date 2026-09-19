@@ -2,6 +2,8 @@ import json
 import sqlite3
 import time
 
+import pytest
+
 from ai_sentinel import storage
 
 
@@ -148,6 +150,9 @@ def test_init_db_migrates_an_incidents_table_predating_the_new_columns(tmp_path)
     assert incident["stage"] == "llm_call"
     assert incident["merged_detectors"] == "latency_spike"
     assert incident["evidence"] == '{"recent": {"llm_call": {"p95_ms": 900}}}'
+
+    storage.touch_incident(db, incident_id, ts=123.0)  # last_seen_ts must have been migrated in too
+    assert storage.get_incident(db, incident_id)["last_seen_ts"] == 123.0
 
 
 def test_open_incident_for_stage_finds_recent_open_incident(tmp_path):
@@ -479,3 +484,55 @@ def test_list_quality_eval_runs_orders_newest_first_and_respects_limit(tmp_path)
     runs = storage.list_quality_eval_runs(db, limit=2)
     assert len(runs) == 2
     assert runs[0]["ts"] > runs[1]["ts"]
+
+
+def test_touch_incident_records_last_seen_only_for_open_incidents(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    open_id = storage.create_incident(
+        db, detector="latency_spike", severity="warning", summary="x",
+        root_cause="y", confidence=0.5, recommended_action="z",
+    )
+    resolved_id = storage.create_incident(
+        db, detector="error_rate_spike", severity="warning", summary="x",
+        root_cause="y", confidence=0.5, recommended_action="z",
+    )
+    storage.update_incident_status(db, resolved_id, "verified")
+
+    assert storage.get_incident(db, open_id)["last_seen_ts"] is None
+    storage.touch_incident(db, open_id, ts=500.0)
+    storage.touch_incident(db, resolved_id, ts=500.0)
+
+    assert storage.get_incident(db, open_id)["last_seen_ts"] == 500.0
+    assert storage.get_incident(db, resolved_id)["last_seen_ts"] is None
+
+
+def test_excluded_periods_ends_an_open_incident_where_its_fault_was_last_seen(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    now = time.time()
+    incident_id = storage.create_incident(
+        db, detector="latency_spike", severity="warning", summary="x",
+        root_cause="y", confidence=0.5, recommended_action="z", ts=now - 1500,
+    )
+    storage.touch_incident(db, incident_id, ts=now - 1400)
+
+    periods = storage.excluded_periods(db, lookback_s=990, detector="latency_spike", anomaly_lead_s=90)
+
+    assert periods == [pytest.approx((now - 1500 - 90, now - 1400))]
+
+
+def test_excluded_periods_falls_back_to_the_capped_range_without_a_last_seen(tmp_path):
+    """No evidence about how long the fault lasted (never re-fired, or the row predates the
+    column) -> stay conservative, but bounded: now, capped at lookback_s past its own start."""
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    now = time.time()
+    storage.create_incident(
+        db, detector="latency_spike", severity="warning", summary="x",
+        root_cause="y", confidence=0.5, recommended_action="z", ts=now - 2000,
+    )
+
+    periods = storage.excluded_periods(db, lookback_s=990, detector="latency_spike", anomaly_lead_s=90)
+
+    assert periods == [pytest.approx((now - 2000 - 90, now - 2000 + 990))]

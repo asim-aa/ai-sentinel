@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS incidents (
     stage TEXT,
     merged_detectors TEXT,
     canary_result TEXT,
-    evidence TEXT
+    evidence TEXT,
+    last_seen_ts REAL
 );
 CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
 CREATE INDEX IF NOT EXISTS idx_incidents_stage ON incidents(stage);
@@ -137,6 +138,7 @@ _INCIDENT_MIGRATIONS = {
     "merged_detectors": "TEXT",
     "canary_result": "TEXT",
     "evidence": "TEXT",
+    "last_seen_ts": "REAL",
 }
 
 
@@ -389,6 +391,17 @@ def create_incident(
         return cur.lastrowid
 
 
+def touch_incident(db_path: str, incident_id: int, ts: float | None = None) -> None:
+    """Records that an open incident's detector is still firing right now. That's the only signal
+    `excluded_periods` has for how long the fault actually lasted, as opposed to how long nobody
+    has gotten around to resolving the incident."""
+    with _connect(db_path) as conn:
+        conn.execute(
+            "UPDATE incidents SET last_seen_ts = ? WHERE id = ? AND status = 'open'",
+            (ts if ts is not None else time.time(), incident_id),
+        )
+
+
 def open_incident_for_stage(db_path: str, stage: str | None, cooldown_s: float = 60) -> dict | None:
     """Finds an already-open incident diagnosed to the same root-cause stage very recently, so a
     second detector firing for what's really the same underlying problem gets merged into it
@@ -424,32 +437,37 @@ def excluded_periods(
     """Conservative time ranges to treat as known-anomalous for this detector, so a baseline
     computation can exclude them instead of being pulled toward a fault that's still ongoing
     (or only recently stopped). Each incident's range starts `anomaly_lead_s` before it was
-    created — roughly the trigger window that led to it — and ends at resolution, or now if
-    it's still open, capped at `lookback_s` past its own start.
+    created -- roughly the trigger window that led to it.
 
-    That cap matters: an incident that's never resolved (nobody clicked remediate, or an
-    unattended run never gets the chance to) would otherwise keep excluding all the way to
-    "now" forever. Once it's open longer than `lookback_s`, its exclusion already fully covers
-    the current baseline window regardless of the cap -- so capping it there doesn't change
-    that case, but it does mean that *past* the cap, the excluded range stops growing and
-    eventually ages out of the baseline window on its own, the same way a resolved incident
-    would. Without the cap, one stale open incident permanently blinds this detector to any
-    later, unrelated occurrence of the same fault -- found live after an unattended blind-eval
-    run left several incidents open for hours."""
+    Where it ends depends on what's known about the fault. A resolved incident ends at
+    resolution. An open one ends where its detector was last seen firing (`last_seen_ts`, kept
+    current by `touch_incident` on every sweep that re-fires it) -- so once the fault stops and
+    the detector goes quiet, the range stops growing and the clean traffic after it counts toward
+    the baseline again. Ending an open incident at "now" instead (the original behavior) also
+    excluded all the clean traffic after the fault, and once the incident aged past ~12 minutes
+    that emptied the baseline entirely, blinding the detector to any later fault until someone
+    resolved it -- found live by running the blind eval at scale, twice: first as a permanent
+    blackout, then, after capping it, as an ~8-minute blind spot per incident.
+
+    An open incident with no `last_seen_ts` (never re-fired, or predating the column) has no
+    evidence about the fault's extent, so it falls back to the conservative bound: now, capped at
+    `lookback_s` past its own start so it can't grow forever."""
     now = time.time()
     with _connect(db_path) as conn:
         rows = conn.execute(
-            """SELECT ts, resolved_ts, status FROM incidents
+            """SELECT ts, resolved_ts, status, last_seen_ts FROM incidents
                WHERE detector = ? AND (status = 'open' OR resolved_ts >= ?)""",
             (detector, now - lookback_s),
         ).fetchall()
-    return [
-        (
-            r["ts"] - anomaly_lead_s,
-            r["resolved_ts"] if r["status"] != "open" else min(now, r["ts"] + lookback_s),
-        )
-        for r in rows
-    ]
+
+    def end_of(r) -> float:
+        if r["status"] != "open":
+            return r["resolved_ts"]
+        if r["last_seen_ts"] is not None:
+            return r["last_seen_ts"]
+        return min(now, r["ts"] + lookback_s)
+
+    return [(r["ts"] - anomaly_lead_s, end_of(r)) for r in rows]
 
 
 def open_incident_for_detector(db_path: str, detector: str, cooldown_s: float = 120) -> dict | None:

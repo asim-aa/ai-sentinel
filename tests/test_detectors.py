@@ -109,7 +109,7 @@ def test_open_incident_older_than_the_lookback_no_longer_blinds_the_detector(tmp
     forever -- that swallows the entire baseline (count drops below MIN_SAMPLES) and permanently
     blinds this detector to any later, unrelated spike, not just the original one. Found live:
     incidents left open by an unattended blind-eval run silently blinded latency_spike detection
-    for the rest of a 2-hour run, on real traffic, not just in a seeded test."""
+    for the rest of a ~90-minute run, on real traffic, not just in a seeded test."""
     db = str(tmp_path / "t.db")
     storage.init_db(db)
     lookback = detectors.BASELINE_WINDOW_S + detectors.RECENT_WINDOW_S
@@ -125,6 +125,30 @@ def test_open_incident_older_than_the_lookback_no_longer_blinds_the_detector(tmp
 
     anomaly = detectors.detect_latency_spike(db)
     assert anomaly is not None
+
+
+def test_open_incident_whose_fault_ended_stops_excluding_clean_traffic_after_it(tmp_path):
+    """The capped version still ended an open incident's exclusion at "now" until it hit the cap,
+    which emptied the baseline once the incident was ~12-18 minutes old (all the *clean* traffic
+    after the fault was being excluded too) and blinded the detector for ~8 minutes per incident.
+    With `last_seen_ts` the exclusion ends where the fault was last seen firing, so the same
+    15-minute-old incident leaves the baseline intact. Found by re-running the 50-trial blind eval
+    after the cap: 84%, with every remaining miss a latency fault landing in that window."""
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+    _seed(db, "chat_request", 18, 300, offset_start=100, spacing=60)  # steady clean traffic, 1/min
+    _seed(db, "chat_request", 6, 3000, offset_start=920, spacing=3)  # the fault, ~15 min ago
+    _seed(db, "chat_request", 5, 3000, offset_start=10, spacing=8)  # a fresh, unrelated spike
+
+    now = time.time()
+    incident_id = storage.create_incident(
+        db, detector="latency_spike", severity="critical",
+        summary="an incident opened when that fault fired", root_cause="x", confidence=0.9,
+        recommended_action="Fail over to backup backend", ts=now - 900,
+    )
+    storage.touch_incident(db, incident_id, ts=now - 800)  # last seen firing 100s after it opened
+
+    assert detectors.detect_latency_spike(db) is not None
 
 
 def test_cost_spike_detected(tmp_path):
