@@ -128,11 +128,11 @@ def test_sweep_once_touches_an_open_incident_its_detector_is_still_firing_for(tm
         root_cause="x", confidence=0.9, recommended_action="Fail over to backup backend",
         stage="llm_call", ts=time.time() - 30,
     )
-    assert storage.get_incident(db, incident_id)["last_seen_ts"] is None
+    created_last_seen = storage.get_incident(db, incident_id)["last_seen_ts"]
 
     before = time.time()
     with patch("ai_sentinel.alerts.emit_alert", new_callable=AsyncMock):
         created = asyncio.run(engine.sweep_once(db))
 
     assert created == []  # suppressed by the cooldown, not a new incident
-    assert storage.get_incident(db, incident_id)["last_seen_ts"] >= before
+    assert storage.get_incident(db, incident_id)["last_seen_ts"] >= before > created_last_seen

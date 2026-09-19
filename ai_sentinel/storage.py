@@ -378,15 +378,20 @@ def create_incident(
     canary_result: str | None = None,
     evidence: dict | None = None,
 ) -> int:
+    created_ts = ts if ts is not None else time.time()
     with _connect(db_path) as conn:
+        # last_seen_ts starts at creation: the detector just fired, which is the one thing known
+        # for certain about the fault's extent. An incident created as its fault spans age out of
+        # the recent window never gets re-fired, so without this it would have no last-seen at all
+        # and fall back to a ~17-minute exclusion that empties the baseline.
         cur = conn.execute(
             """INSERT INTO incidents
                (ts, detector, severity, summary, root_cause, confidence, recommended_action, status,
-                stage, merged_detectors, canary_result, evidence)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?)""",
-            (ts if ts is not None else time.time(), detector, severity, summary, root_cause,
+                stage, merged_detectors, canary_result, evidence, last_seen_ts)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)""",
+            (created_ts, detector, severity, summary, root_cause,
              confidence, recommended_action, stage, detector, canary_result,
-             json.dumps(evidence) if evidence is not None else None),
+             json.dumps(evidence) if evidence is not None else None, created_ts),
         )
         return cur.lastrowid
 
@@ -449,9 +454,12 @@ def excluded_periods(
     resolved it -- found live by running the blind eval at scale, twice: first as a permanent
     blackout, then, after capping it, as an ~8-minute blind spot per incident.
 
-    An open incident with no `last_seen_ts` (never re-fired, or predating the column) has no
-    evidence about the fault's extent, so it falls back to the conservative bound: now, capped at
-    `lookback_s` past its own start so it can't grow forever."""
+    New incidents start with `last_seen_ts` = their creation time, so even one that is never
+    re-fired excludes only its own trigger window (found by a third 50-trial run: an incident
+    created as its fault aged out of the recent window was never touched, fell back to the
+    conservative range, and emptied the baseline for one trial). Only an open incident from before
+    the column existed has no `last_seen_ts`; it falls back to the conservative bound: now,
+    capped at `lookback_s` past its own start so it can't grow forever."""
     now = time.time()
     with _connect(db_path) as conn:
         rows = conn.execute(

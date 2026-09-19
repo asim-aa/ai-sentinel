@@ -126,13 +126,15 @@ def test_diagnose_stays_accurate_on_a_later_sweep_of_a_sustained_fault(tmp_path)
     _seed(db, "llm_call", 5, 3500, offset_start=300, spacing=60)
     _seed(db, "chat_request", 5, 10 + 40 + 3500 + 15, offset_start=300, spacing=60)
 
-    # an already-fired, still-open incident covering that earlier stretch
-    storage.create_incident(
+    # an already-fired, still-open incident covering that earlier stretch; the sweeps in between
+    # kept re-firing it (that is what "sustained" means), the latest one 15s ago
+    incident_id = storage.create_incident(
         db, detector="latency_spike", severity="critical",
         summary="earlier detection", root_cause="x", confidence=0.9,
         recommended_action="Fail over to backup backend",
         ts=time.time() - 690,
     )
+    storage.touch_incident(db, incident_id, ts=time.time() - 15)
 
     # the fault, still ongoing right now
     for stage, base_ms in [("auth", 10), ("retrieval", 40), ("tool_call", 15)]:

@@ -97,6 +97,9 @@ def test_baseline_excludes_periods_covered_by_open_incidents(tmp_path):
         recommended_action="Fail over to backup backend",
         ts=time.time() - 520,
     )
+    # "still open" means the detector keeps re-firing on sweeps, which is what keeps the range
+    # extending to now; a static snapshot has to say so explicitly.
+    storage.touch_incident(db, storage.open_incident_for_detector(db, "latency_spike", cooldown_s=600)["id"])
 
     anomaly = detectors.detect_latency_spike(db)
     assert anomaly is not None
@@ -147,6 +150,24 @@ def test_open_incident_whose_fault_ended_stops_excluding_clean_traffic_after_it(
         recommended_action="Fail over to backup backend", ts=now - 900,
     )
     storage.touch_incident(db, incident_id, ts=now - 800)  # last seen firing 100s after it opened
+
+    assert detectors.detect_latency_spike(db) is not None
+
+
+def test_incident_created_as_its_fault_aged_out_and_never_re_fired_does_not_blind_the_detector(tmp_path):
+    """The case the third blind-eval run hit: the sweep created the incident just as the fault's
+    spans were leaving the recent window, so no later sweep re-fired it. It must exclude only its
+    own trigger window, not fall back to a ~17-minute range that empties the baseline."""
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+    _seed(db, "chat_request", 18, 300, offset_start=100, spacing=60)  # steady clean traffic, 1/min
+    _seed(db, "chat_request", 6, 3000, offset_start=920, spacing=3)  # the fault, ~15 min ago
+    _seed(db, "chat_request", 5, 3000, offset_start=10, spacing=8)  # a fresh, unrelated spike
+    storage.create_incident(
+        db, detector="latency_spike", severity="critical", summary="created late, never re-fired",
+        root_cause="x", confidence=0.9, recommended_action="Fail over to backup backend",
+        ts=time.time() - 900,
+    )
 
     assert detectors.detect_latency_spike(db) is not None
 

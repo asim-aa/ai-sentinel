@@ -499,12 +499,12 @@ def test_touch_incident_records_last_seen_only_for_open_incidents(tmp_path):
     )
     storage.update_incident_status(db, resolved_id, "verified")
 
-    assert storage.get_incident(db, open_id)["last_seen_ts"] is None
+    resolved_last_seen = storage.get_incident(db, resolved_id)["last_seen_ts"]
     storage.touch_incident(db, open_id, ts=500.0)
     storage.touch_incident(db, resolved_id, ts=500.0)
 
     assert storage.get_incident(db, open_id)["last_seen_ts"] == 500.0
-    assert storage.get_incident(db, resolved_id)["last_seen_ts"] is None
+    assert storage.get_incident(db, resolved_id)["last_seen_ts"] == resolved_last_seen  # untouched
 
 
 def test_excluded_periods_ends_an_open_incident_where_its_fault_was_last_seen(tmp_path):
@@ -522,9 +522,23 @@ def test_excluded_periods_ends_an_open_incident_where_its_fault_was_last_seen(tm
     assert periods == [pytest.approx((now - 1500 - 90, now - 1400))]
 
 
+def test_a_new_incident_that_is_never_re_fired_excludes_only_its_own_trigger_window(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    now = time.time()
+    storage.create_incident(
+        db, detector="latency_spike", severity="warning", summary="x",
+        root_cause="y", confidence=0.5, recommended_action="z", ts=now - 900,
+    )
+
+    periods = storage.excluded_periods(db, lookback_s=990, detector="latency_spike", anomaly_lead_s=90)
+
+    assert periods == [pytest.approx((now - 900 - 90, now - 900))]
+
+
 def test_excluded_periods_falls_back_to_the_capped_range_without_a_last_seen(tmp_path):
-    """No evidence about how long the fault lasted (never re-fired, or the row predates the
-    column) -> stay conservative, but bounded: now, capped at lookback_s past its own start."""
+    """A row from before the column existed has no evidence about how long the fault lasted ->
+    stay conservative, but bounded: now, capped at lookback_s past its own start."""
     db = str(tmp_path / "test.db")
     storage.init_db(db)
     now = time.time()
@@ -532,6 +546,8 @@ def test_excluded_periods_falls_back_to_the_capped_range_without_a_last_seen(tmp
         db, detector="latency_spike", severity="warning", summary="x",
         root_cause="y", confidence=0.5, recommended_action="z", ts=now - 2000,
     )
+    with sqlite3.connect(db) as conn:
+        conn.execute("UPDATE incidents SET last_seen_ts = NULL")
 
     periods = storage.excluded_periods(db, lookback_s=990, detector="latency_spike", anomaly_lead_s=90)
 
