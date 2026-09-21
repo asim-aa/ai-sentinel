@@ -5,6 +5,7 @@ availability-driven: with both ANTHROPIC_API_KEY and OPENAI_API_KEY set, primary
 genuinely different providers (Claude + OpenAI) — a real failover, not a same-model toggle. With
 only one key set, both point at that one provider. With neither, both fall back to a
 deterministic mock with realistic latency jitter, so the whole system works with zero setup.
+A third provider, any OpenAI-compatible Chat Completions server, is enabled by LLM_BASE_URL.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ from typing import Callable
 
 ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-luna")  # OpenAI's cheapest/fastest tier
+# Reasoning models spend tokens thinking before they answer; a small budget can leave content empty.
+_COMPATIBLE_MAX_TOKENS = 1024
 
 _MOCK_RESPONSES = [
     "Based on the retrieved context, the answer is confirmed and consistent with the source material.",
@@ -135,11 +138,57 @@ class OpenAIBackend(Backend):
         )
 
 
+class OpenAICompatibleBackend(Backend):
+    """Any server speaking the OpenAI Chat Completions API (vLLM, Ray Serve, llama.cpp, ...), used
+    when LLM_BASE_URL is set. LLM_MODEL is required; LLM_API_KEY defaults to a placeholder (local
+    servers usually ignore it) and LLM_TIMEOUT_SECONDS to 120.
+    """
+
+    def __init__(self, name: str):
+        import openai
+
+        model = os.environ.get("LLM_MODEL")
+        if not model:
+            raise ValueError("LLM_BASE_URL is set but LLM_MODEL is not")
+        self.name = name
+        self.model = model
+        # No SDK retries: this system is the retry/failover layer, and silently retrying a 120s
+        # timeout would hide an outage from it for minutes.
+        self._client = openai.AsyncOpenAI(
+            base_url=os.environ["LLM_BASE_URL"],
+            api_key=os.environ.get("LLM_API_KEY", "not-needed"),
+            timeout=float(os.environ.get("LLM_TIMEOUT_SECONDS", "120")),
+            max_retries=0,
+        )
+
+    async def generate(self, prompt: str) -> LLMResult:
+        start = time.perf_counter()
+        try:
+            resp = await self._client.chat.completions.create(
+                model=self.model,
+                max_tokens=_COMPATIBLE_MAX_TOKENS,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except Exception as exc:  # noqa: BLE001 - surfaced as a span error by the caller
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            return LLMResult(text="", latency_ms=elapsed_ms, tokens_in=0, tokens_out=0, error=str(exc))
+
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        usage = getattr(resp, "usage", None)
+        return LLMResult(
+            text=resp.choices[0].message.content or "",
+            latency_ms=elapsed_ms,
+            tokens_in=getattr(usage, "prompt_tokens", 0) if usage else 0,
+            tokens_out=getattr(usage, "completion_tokens", 0) if usage else 0,
+        )
+
+
 # Priority order: first available key wins "primary", second-available wins "backup". Adding a
 # third provider is one more (env var, factory) entry here.
 _PROVIDERS: list[tuple[str, Callable[[str], Backend]]] = [
     ("ANTHROPIC_API_KEY", lambda name: AnthropicBackend(name)),
     ("OPENAI_API_KEY", lambda name: OpenAIBackend(name)),
+    ("LLM_BASE_URL", lambda name: OpenAICompatibleBackend(name)),
 ]
 
 

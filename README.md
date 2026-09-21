@@ -12,7 +12,7 @@ the rendered version.
 
 Claims that are actually checked, not just described:
 
-- **128 automated tests**, passing both locally and on a persistent deployment.
+- **138 automated tests**, passing both locally and on a persistent deployment.
 - **The blind fault-injection eval, run four times at 50 trials, climbing from `68%` to `98%` as it
   exposed three successive layers of one baseline-exclusion bug** — the fault is withheld from
   detection and diagnosis, and root-cause attribution is graded against the hidden ground truth
@@ -79,8 +79,20 @@ jitter. Provider selection is availability-driven:
 | set | set | Claude | OpenAI |
 
 Set both and "Fail over to backup backend" is a real cross-provider failover, not just a second
-instance of the same model. Adding a third provider is one more entry in the priority list in
+instance of the same model. Adding a provider is one more entry in the priority list in
 `demo_service/llm_client.py`.
+
+Any server that speaks the OpenAI Chat Completions API (vLLM, Ray Serve, llama.cpp, ...) is a third
+provider: set `LLM_BASE_URL` and `LLM_MODEL`, plus optionally `LLM_API_KEY` and
+`LLM_TIMEOUT_SECONDS` (default 120). It sits behind Claude and OpenAI in the priority order, so on
+its own it fills both slots, and with Claude also set it's the backup. Two deliberate choices: the
+SDK's automatic retries are off, because this system is the retry/failover layer and silently
+retrying a 120s timeout would hide an outage from it for minutes; and the token budget is 1024,
+because reasoning models spend tokens thinking before they answer. **Not verified against a real
+server:** the tests use mocked SDK calls and a local fake HTTP server (which confirms the request
+path, auth header, and timeout behavior), but the endpoint this was written for was unreachable, so
+how a real reasoning model lays out its reply is unconfirmed. Costs show as `$0`, since there's no
+per-token price for a self-hosted model.
 
 ## Deploying persistently
 

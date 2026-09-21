@@ -143,7 +143,16 @@ picks providers by availability — with both `ANTHROPIC_API_KEY` and `OPENAI_AP
 is Claude (`claude-haiku-4-5`) and backup is OpenAI (`gpt-5.6-luna`), so a fail-over is a genuine
 cross-provider switch, not a same-model toggle. With only one key (or neither), both point at
 whatever's available. The priority list is a simple `(env var, factory)` sequence — a third
-provider is one more entry, not a restructure.
+provider is one more entry, not a restructure, and that's how `OpenAICompatibleBackend` was added:
+any OpenAI-compatible Chat Completions server, enabled by `LLM_BASE_URL` (plus `LLM_MODEL`, and
+optionally `LLM_API_KEY` / `LLM_TIMEOUT_SECONDS`), behind Claude and OpenAI in priority. It turns
+the SDK's automatic retries off, since this system is the retry/failover layer and a silent 3x
+retry of a 120s timeout would hide an outage from it for minutes (a hung server surfaces as a span
+error after exactly the configured timeout, checked against a local fake server), and uses a 1024
+token budget because reasoning models spend tokens thinking before they answer. Verified with
+mocked SDK calls and that fake server, not a real endpoint: the intended server (a lab
+`gpt-oss-20b` behind vLLM/Ray Serve) accepted connections but never answered HTTP, so the real
+reply shape, for example where a reasoning model puts its answer, is unconfirmed.
 
 ## 6. Dashboard data flow
 
