@@ -12,14 +12,14 @@ the rendered version.
 
 Claims that are actually checked, not just described:
 
-- **118 automated tests**, passing both locally and on a persistent deployment.
-- **A 50-trial blind fault-injection run at real scale found a genuine detection gap that a single
-  5-trial pass had missed** — the fault is withheld from detection and diagnosis, and root-cause
-  attribution is graded against the hidden ground truth afterward, not just exercised and assumed
-  correct. Full scale scored `68%`, not the misleadingly perfect `100%` one pass had shown,
-  isolating one specific, reproducible cause that's since been fixed and verified against the exact
-  live incidents that caused it (see [Blind fault-injection eval](#blind-fault-injection-eval)
-  below).
+- **125 automated tests**, passing both locally and on a persistent deployment.
+- **The blind fault-injection eval, run four times at 50 trials, climbing from `68%` to `98%` as it
+  exposed three successive layers of one baseline-exclusion bug** — the fault is withheld from
+  detection and diagnosis, and root-cause attribution is graded against the hidden ground truth
+  afterward. A single 5-trial pass had scored a misleadingly perfect `5/5`; real scale found the
+  bug, and each fix was verified by re-running it. Not a general accuracy claim: `98%` isn't a
+  held-out estimate (the fixes targeted earlier runs' misses), and `49/50` is consistent with
+  anywhere from ~90% to ~100% (see [Blind fault-injection eval](#blind-fault-injection-eval) below).
 - **Verified remediation with automatic rollback** — an action isn't marked "fixed" until real
   post-action traffic confirms the metric actually recovered; if it didn't, the system reverts
   itself and says so.
@@ -209,18 +209,21 @@ than excluding the fault from the eval's pool to make the score look better. Liv
 same as any other LLM-call issue.
 
 **One pass through the 5 fault types isn't a statistically powered claim, and running the eval at
-real scale proved why that caveat mattered.** A 50-trial run (10 per fault type) scored `68%`
-overall: a clean `10/10` on the three fault types whose detectors only ever look at the recent
-window, but `2/10` on the two that depend on baseline (`slow_llm`, `vector_db_slow`). Both scored
-correct on their first one or two occurrences, then missed every trial for the rest of a ~90-minute
-run — an unresolved incident from early in the run kept excluding time from the baseline with no
-upper bound, eventually excluding the *entire* baseline window and permanently blinding that
-detector, not just to the original fault but to any later occurrence of it. A run under ~15 minutes
-(including the original 5-trial pass) can't hit this — it needs an incident older than the baseline
-lookback to even exist. Fixed by capping the exclusion at the lookback window's own length instead
-of letting it grow forever; verified against kolmogorov's actual stale incidents from that run,
-not just a fresh test — baseline sample count went from 0 to 15 for the same detector, same
-incidents, before and after the fix.
+real scale proved why that caveat mattered.** Four 50-trial runs (10 per fault type) scored `68%`,
+`84%`, `96%`, then `98%`, each after a fix informed by the previous run's misses. The first drop,
+from `5/5` to `68%`, was `2/10` on the two faults that depend on baseline (`slow_llm`,
+`vector_db_slow`) against a clean `10/10` on the three that don't: an unresolved incident kept
+excluding time from the baseline with no upper bound, eventually excluding the whole window and
+permanently blinding that detector. A run under ~15 minutes can't hit this, since it needs an
+incident older than the baseline lookback to exist. Fixing it took three passes, each exposing the
+next layer: cap the exclusion, end it where the incident's fault was last seen firing, and start
+that at the incident's creation so one that's never re-fired excludes only its own trigger window
+(details in `docs/ARCHITECTURE.md` §4 and §9, including the per-run table).
+
+Two honest caveats. `98%` is not a held-out figure: runs 2 to 4 were partly tuned against the eval
+itself, and `49/50` is consistent with anywhere from ~90% to ~100%. And the one remaining miss is an
+`llm_errors` trial where only 2 of 6 probes errored; the detector fired but attribution isn't
+significant at that error rate. That's a sensitivity limit, not the window bug, and it's left as is.
 
 ## Quality eval
 

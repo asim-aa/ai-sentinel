@@ -80,23 +80,33 @@ self-referential design (the system excludes its own detected anomalies from its
 covered by regression tests in both `tests/test_detectors.py` and `tests/test_rootcause.py` that
 seed a polluted baseline and assert detection fails without an incident row and succeeds with one.
 
-**A second limitation in that same fix, found later by running the blind eval at real scale (§9),
-since also fixed:** the exclusion above had no upper bound — an incident that's still `open`
-excludes all the way to "now," however long ago it was created. An incident that never gets
-resolved (nothing in an unattended run clicks remediate) keeps growing that exclusion forever, and
-once it's open longer than the lookback window, the exclusion fully swallows the current baseline
-query, dropping `baseline["count"]` below `MIN_SAMPLES` and permanently blinding that detector —
-not just to the original fault, but to any later, unrelated occurrence of the same fault. Caught
-live on kolmogorov's real database, not just in a seeded test: a 50-trial blind-eval run left four
-`latency_spike` incidents open, and every `slow_llm`/`vector_db_slow` trial after roughly the
-15-minute mark scored `not_detected` for the rest of the ~90-minute run — 8/10 misses on both fault
-types, against a clean 10/10 on the three fault types whose detectors don't read baseline at all.
-Fixed by capping the exclusion's end at `min(now, incident_ts + lookback_s)`: a recent, genuinely
-ongoing incident behaves exactly as before, but past the cap the excluded range stops growing and
-eventually ages out of the baseline window on its own, the same way a resolved incident would.
-Verified against kolmogorov's actual stale incidents from that run (not just a fresh seeded test):
-baseline sample count went from 0 to 15 for the same detector, same incidents, same live database,
-before and after the fix.
+**Three more limitations in that same fix, found by running the blind eval at real scale (§9) and
+fixed one layer at a time:** the exclusion above ran an open incident's range all the way to "now,"
+so an incident that never got resolved (nothing in an unattended run clicks remediate) kept
+excluding more of the baseline every sweep. Once it had been open longer than the lookback window
+it swallowed the whole baseline query, dropping `baseline["count"]` below `MIN_SAMPLES` and blinding
+that detector to any later, unrelated occurrence of the same fault, not just the original one.
+Every fix exposed the next layer, and each was only caught because the eval was re-run:
+
+1. **Cap at the lookback** (`min(now, incident_ts + lookback_s)`). Permanent blindness became an
+   ~8-minute blind spot per incident, because until it hit the cap an open incident still excluded
+   *all the clean traffic after its fault* too, and past ~12 minutes of age that emptied the
+   baseline. A simulation against the real detector code predicted the blind window before the
+   next run confirmed it. Verified against kolmogorov's real stale incidents: baseline sample count
+   0 to 15 for the same detector, same incidents, before and after.
+2. **`last_seen_ts`.** Incidents record when their detector was last seen firing
+   (`storage.touch_incident`, called by the sweep whenever the cooldown suppresses a re-fire), and
+   an open incident's range ends there. Once the fault stops and the detector goes quiet, the clean
+   traffic after it counts toward the baseline again.
+3. **`last_seen_ts` starts at creation.** An incident the sweep created just as its fault spans
+   aged out of the 90s recent window was never re-fired, so it had no last-seen and fell back to
+   the conservative ~17-minute range: 0 baseline samples with the exclusion, 99 without, on the one
+   trial it broke (reconstructed from the stored spans and incident rows, not guessed). New
+   incidents now start at their own creation time, so a never-re-fired one excludes only its
+   trigger window. Only rows from before the column existed keep the capped fallback.
+
+Tests seed each of these scenarios and assert detection fires; the ones that modelled "still
+open" as an untouched row now touch it, as a sweep would. See §9 for the four-run results.
 
 Every incident also goes through `ai_sentinel/alerts.py::emit_alert`, which always logs a
 structured line and, if configured, delivers to Slack (`SLACK_WEBHOOK_URL` — a proper Block Kit
@@ -247,17 +257,37 @@ end this costs a genuine ~10 minutes (a 95s warm-up plus 4 gaps at ~100s each) �
 in exchange for testing the exact same windowed detection a real incident goes through.
 
 **`5/5` was one pass, not a statistically powered claim, and running the eval at real scale proved
-exactly why that caveat mattered.** A 50-trial run (`trial_count=50`, 10 per fault type instead of
-1) scored `68%` overall — `10/10` on the three fault types whose detectors are recent-window-only
-(`invalid_output_rate`, `error_rate_spike`, `tool_failure_rate`), but only `2/10` on the two that
-depend on baseline (`slow_llm`, `vector_db_slow`, both routed through `detect_latency_spike`). The
-pattern wasn't noise: both latency fault types scored correct for their first one or two
-occurrences, then missed every single trial from roughly the 15-minute mark onward, for the rest of
-the ~90-minute run — the unbounded-exclusion bug in `excluded_periods` described in §4, triggered
-here because nothing in an unattended eval run ever resolves the incidents it causes. A run
-under ~15 minutes (including the original `n=5` pass) structurally can't hit this, since it needs
-an incident older than the baseline lookback to even exist. Fixed in §4; not yet re-confirmed with
-a second full-scale run as of this writing.
+exactly why that caveat mattered.** Four 50-trial runs (`trial_count=50`, 10 per fault type), each
+after a fix informed by the previous run's misses, all detached on kolmogorov against the live
+database (~90 minutes each):
+
+| Fault | Run 1 | Run 2 (cap) | Run 3 (`last_seen_ts`) | Run 4 (start at creation) |
+|---|---|---|---|---|
+| malformed_output | 10/10 | 10/10 | 10/10 | 10/10 |
+| llm_errors | 10/10 | 10/10 | 9/10 | 9/10 |
+| tool_failure | 10/10 | 10/10 | 10/10 | 10/10 |
+| slow_llm | 2/10 | 7/10 | 10/10 | 10/10 |
+| vector_db_slow | 2/10 | 5/10 | 9/10 | 10/10 |
+| **overall** | **68%** | **84%** | **96%** | **98%** |
+
+Run 1 dropped from `5/5` to `68%` because of the unbounded-exclusion bug in `excluded_periods`
+described in §4: both latency faults scored correct on their first one or two occurrences, then
+missed every trial from roughly the 15-minute mark on, once nothing in an unattended run had
+resolved the incidents it caused. The three fault types with recent-window-only detectors stayed
+`10/10`, which is what isolated the problem to `detect_latency_spike`'s baseline dependency. A run
+under ~15 minutes, including the original 5-trial pass, structurally can't hit it. Runs 2 to 4
+each measured a fix and exposed the next layer (§4).
+
+Caveats worth keeping next to the number: `98%` is not a held-out estimate, since each fix targeted
+misses seen in the run before it, so runs 2 to 4 are partly tuned against the eval itself (the
+faults are freshly randomized per run and the fixed bugs were real, not trial-specific, but it's
+still the same test). And `49/50` is consistent with a true accuracy anywhere from ~90% to ~100%
+(95% Wilson interval). The one remaining miss, an `llm_errors` trial scored `inconclusive`, is a
+different thing from the window bug: it was the only `llm_errors` trial in its run where just 2 of
+6 probes errored (the rest got 4 to 6), and run 3's `llm_errors` miss had the same 2-of-6
+signature. Across runs 3 and 4, all 18 `llm_errors` trials with 4 or more errors were diagnosed
+correctly. The detector fired both times, but the per-stage attribution isn't significant at that
+error rate, a sensitivity limit of `rootcause.py` at low error rates that's left as is.
 
 ## 10. RCA evidence panel
 
