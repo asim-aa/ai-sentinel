@@ -80,13 +80,13 @@ self-referential design (the system excludes its own detected anomalies from its
 covered by regression tests in both `tests/test_detectors.py` and `tests/test_rootcause.py` that
 seed a polluted baseline and assert detection fails without an incident row and succeeds with one.
 
-**Three more limitations in that same fix, found by running the blind eval at real scale (§9) and
-fixed one layer at a time:** the exclusion above ran an open incident's range all the way to "now,"
+**Four more limitations in that same fix, found by running the blind eval at real scale (§9) and
+while cleaning up after it, fixed one layer at a time:** the exclusion above ran an open incident's range all the way to "now,"
 so an incident that never got resolved (nothing in an unattended run clicks remediate) kept
 excluding more of the baseline every sweep. Once it had been open longer than the lookback window
 it swallowed the whole baseline query, dropping `baseline["count"]` below `MIN_SAMPLES` and blinding
 that detector to any later, unrelated occurrence of the same fault, not just the original one.
-Every fix exposed the next layer, and each was only caught because the eval was re-run:
+Every fix exposed the next layer; the first three were only caught because the eval was re-run:
 
 1. **Cap at the lookback** (`min(now, incident_ts + lookback_s)`). Permanent blindness became an
    ~8-minute blind spot per incident, because until it hit the cap an open incident still excluded
@@ -104,6 +104,13 @@ Every fix exposed the next layer, and each was only caught because the eval was 
    trial it broke (reconstructed from the stored spans and incident rows, not guessed). New
    incidents now start at their own creation time, so a never-re-fired one excludes only its
    trigger window. Only rows from before the column existed keep the capped fallback.
+4. **Resolved incidents end at `last_seen_ts` too.** Resolving an incident stamps `resolved_ts` =
+   now, and treating that as the end of the fault made an old incident exclude everything from its
+   start to the moment it was resolved, blinding the detector for the next ~990s. A late
+   resolution, whether a person clicking through or a bulk cleanup of the eval's stale incidents,
+   did exactly what the unresolved incidents used to. A resolved incident's range now ends at
+   `min(resolved_ts, last_seen_ts)`; rows without a `last_seen_ts` keep `resolved_ts`. Noticed
+   while bulk-resolving those stale incidents, which were cleared with direct SQL first to avoid it.
 
 Tests seed each of these scenarios and assert detection fires; the ones that modelled "still
 open" as an untouched row now touch it, as a sweep would. See §9 for the four-run results.

@@ -12,7 +12,7 @@ the rendered version.
 
 Claims that are actually checked, not just described:
 
-- **125 automated tests**, passing both locally and on a persistent deployment.
+- **128 automated tests**, passing both locally and on a persistent deployment.
 - **The blind fault-injection eval, run four times at 50 trials, climbing from `68%` to `98%` as it
   exposed three successive layers of one baseline-exclusion bug** — the fault is withheld from
   detection and diagnosis, and root-cause attribution is graded against the hidden ground truth

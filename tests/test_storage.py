@@ -552,3 +552,40 @@ def test_excluded_periods_falls_back_to_the_capped_range_without_a_last_seen(tmp
     periods = storage.excluded_periods(db, lookback_s=990, detector="latency_spike", anomaly_lead_s=90)
 
     assert periods == [pytest.approx((now - 2000 - 90, now - 2000 + 990))]
+
+
+def test_excluded_periods_caps_a_resolved_incident_at_its_last_seen(tmp_path):
+    """Resolving an old incident stamps resolved_ts = now. Treating that as when the fault ended
+    made it exclude everything since it opened, so a late resolution blinded the detector the
+    same way an unresolved incident used to. The fault ended where it was last seen firing."""
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    now = time.time()
+    incident_id = storage.create_incident(
+        db, detector="latency_spike", severity="warning", summary="x",
+        root_cause="y", confidence=0.5, recommended_action="z", ts=now - 2000,
+    )
+    storage.touch_incident(db, incident_id, ts=now - 1900)
+    storage.update_incident_status(db, incident_id, "ignored")  # resolved_ts = now
+
+    periods = storage.excluded_periods(db, lookback_s=990, detector="latency_spike", anomaly_lead_s=90)
+
+    assert periods == [pytest.approx((now - 2000 - 90, now - 1900))]
+
+
+def test_excluded_periods_keeps_resolved_ts_for_a_resolved_row_without_a_last_seen(tmp_path):
+    db = str(tmp_path / "test.db")
+    storage.init_db(db)
+    now = time.time()
+    incident_id = storage.create_incident(
+        db, detector="latency_spike", severity="warning", summary="x",
+        root_cause="y", confidence=0.5, recommended_action="z", ts=now - 100,
+    )
+    storage.update_incident_status(db, incident_id, "ignored")
+    with sqlite3.connect(db) as conn:  # a row from before the column existed
+        conn.execute("UPDATE incidents SET last_seen_ts = NULL")
+    resolved_ts = storage.get_incident(db, incident_id)["resolved_ts"]
+
+    periods = storage.excluded_periods(db, lookback_s=990, detector="latency_spike", anomaly_lead_s=90)
+
+    assert periods == [pytest.approx((now - 100 - 90, resolved_ts))]

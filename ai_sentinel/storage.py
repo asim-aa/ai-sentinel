@@ -445,7 +445,9 @@ def excluded_periods(
     created -- roughly the trigger window that led to it.
 
     Where it ends depends on what's known about the fault. A resolved incident ends at
-    resolution. An open one ends where its detector was last seen firing (`last_seen_ts`, kept
+    resolution, or where its detector was last seen firing if that was earlier (resolving late, or
+    bulk-clearing stale incidents, must not make it exclude everything up to that moment). An open
+    one ends where its detector was last seen firing (`last_seen_ts`, kept
     current by `touch_incident` on every sweep that re-fires it) -- so once the fault stops and
     the detector goes quiet, the range stops growing and the clean traffic after it counts toward
     the baseline again. Ending an open incident at "now" instead (the original behavior) also
@@ -470,6 +472,9 @@ def excluded_periods(
 
     def end_of(r) -> float:
         if r["status"] != "open":
+            # Resolving stamps resolved_ts = now, however long after the fault ended that is.
+            if r["last_seen_ts"] is not None:
+                return min(r["resolved_ts"], r["last_seen_ts"])
             return r["resolved_ts"]
         if r["last_seen_ts"] is not None:
             return r["last_seen_ts"]

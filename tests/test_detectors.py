@@ -172,6 +172,29 @@ def test_incident_created_as_its_fault_aged_out_and_never_re_fired_does_not_blin
     assert detectors.detect_latency_spike(db) is not None
 
 
+def test_resolving_an_old_incident_late_does_not_blind_the_detector(tmp_path):
+    """Resolving stamps resolved_ts = now. Ending the exclusion there made a 15-minute-old incident
+    exclude its whole lifetime up to now the moment someone (or a bulk cleanup) resolved it,
+    emptying the baseline for the next ~16 minutes. Found while clearing the blind eval's stale
+    incidents, which is why they were resolved by hand-written SQL instead of the normal path."""
+    db = str(tmp_path / "t.db")
+    storage.init_db(db)
+    _seed(db, "chat_request", 18, 300, offset_start=100, spacing=60)  # steady clean traffic, 1/min
+    _seed(db, "chat_request", 6, 3000, offset_start=920, spacing=3)  # the fault, ~15 min ago
+    _seed(db, "chat_request", 5, 3000, offset_start=10, spacing=8)  # a fresh, unrelated spike
+
+    now = time.time()
+    incident_id = storage.create_incident(
+        db, detector="latency_spike", severity="critical",
+        summary="an old incident someone resolves just now", root_cause="x", confidence=0.9,
+        recommended_action="Fail over to backup backend", ts=now - 900,
+    )
+    storage.touch_incident(db, incident_id, ts=now - 800)
+    storage.update_incident_status(db, incident_id, "ignored")  # resolved_ts = now
+
+    assert detectors.detect_latency_spike(db) is not None
+
+
 def test_cost_spike_detected(tmp_path):
     db = str(tmp_path / "t.db")
     storage.init_db(db)
