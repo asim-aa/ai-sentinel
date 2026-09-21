@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="330" viewBox="0 0 840 330" role="img" aria-label="Code structure: a chat_request root span wrapping auth, retrieval, llm_call, and tool_call child spans. Below, a proportional waterfall of one real request: auth 9 milliseconds, retrieval 26 milliseconds, llm_call 405 milliseconds dominating the bar, tool_call 29 milliseconds.">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+          <g font-family="'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5">
+            <text x="20" y="32" fill="#5b6675">with tracer.start_as_current_span(<tspan fill="#12181f">"chat_request"</tspan>):</text>
+            <text x="44" y="54" fill="#12181f">auth</text>
+            <text x="44" y="76" fill="#12181f">retrieval</text>
+            <text x="44" y="98" fill="#2f6fed">llm_call</text>
+            <text x="220" y="98" font-family="'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif" font-size="11" fill="#5b6675">← backend, tokens_in, tokens_out, model, cost_usd</text>
+            <text x="44" y="120" fill="#12181f">tool_call</text>
+          </g>
+          <line x1="20" y1="140" x2="820" y2="140" stroke="#dde2e9"/>
+          <g font-family="'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5">
+            <text x="130" y="178" text-anchor="end" fill="#5b6675">auth</text>
+            <rect x="140" y="167" width="660" height="20" rx="3" fill="#eef1f6"/>
+            <rect x="140" y="167" width="12" height="20" rx="3" fill="#12181f"/>
+            <text x="812" y="181" text-anchor="end" fill="#5b6675">9ms</text>
+
+            <text x="130" y="213" text-anchor="end" fill="#5b6675">retrieval</text>
+            <rect x="140" y="202" width="660" height="20" rx="3" fill="#eef1f6"/>
+            <rect x="152" y="202" width="34" height="20" fill="#12181f"/>
+            <text x="812" y="216" text-anchor="end" fill="#5b6675">26ms</text>
+
+            <text x="130" y="248" text-anchor="end" fill="#2f6fed">llm_call</text>
+            <rect x="140" y="237" width="660" height="20" rx="3" fill="#eef1f6"/>
+            <rect x="186" y="237" width="535" height="20" fill="#2f6fed"/>
+            <text x="812" y="251" text-anchor="end" fill="#2f6fed">405ms</text>
+
+            <text x="130" y="283" text-anchor="end" fill="#5b6675">tool_call</text>
+            <rect x="140" y="272" width="660" height="20" rx="3" fill="#eef1f6"/>
+            <rect x="722" y="272" width="38" height="20" rx="3" fill="#12181f"/>
+            <text x="812" y="286" text-anchor="end" fill="#5b6675">29ms</text>
+          </g>
+          <text x="454" y="230" text-anchor="middle" font-family="'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif" font-size="10.5" fill="#2f6fed">86% of total request time</text>
+        </svg>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="340" viewBox="0 0 840 340" role="img" aria-label="Capture happens automatically the instant an incident is marked verified: record_regression captures its detector, stage, and fault mode, and upserts a row into the regressions table keyed by detector and stage. Replay happens later, on demand: Run regression suite loops over every stored regression, injecting the stored fault, probing, applying the stored fix, probing again, then measuring and deciding whether the metric recovered — the same inject, probe, fix, probe, decide shape as the core loop at the top of this page, run now against stored parameters instead of a live anomaly.">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+          <defs>
+            <marker id="arrow-d8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#12181f"/>
+            </marker>
+          </defs>
+          <g font-family="'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5">
+            <text x="20" y="18" fill="#5b6675" font-size="10.5" letter-spacing="0.06em">CAPTURE — automatic, the instant verification.py marks an incident "verified"</text>
+
+            <rect x="20" y="30" width="160" height="46" rx="6" fill="#ffffff" stroke="#12181f" stroke-width="1.3"/>
+            <text x="100" y="58" text-anchor="middle" fill="#12181f">incident → verified</text>
+
+            <line x1="180" y1="53" x2="208" y2="53" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d8)"/>
+
+            <rect x="210" y="30" width="200" height="46" rx="6" fill="#ffffff" stroke="#2f6fed" stroke-width="1.4"/>
+            <text x="310" y="58" text-anchor="middle" fill="#2f6fed">record_regression()</text>
+
+            <line x1="410" y1="53" x2="438" y2="53" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d8)"/>
+
+            <rect x="440" y="22" width="300" height="62" rx="6" fill="#eef1f6" stroke="#12181f" stroke-width="1.2" stroke-dasharray="3 3"/>
+            <text x="590" y="48" text-anchor="middle" fill="#12181f" font-size="11.5">regressions table</text>
+            <text x="590" y="67" text-anchor="middle" fill="#5b6675" font-size="10">upsert, keyed by (detector, stage)</text>
+
+            <line x1="20" y1="104" x2="820" y2="104" stroke="#dde2e9"/>
+            <text x="20" y="126" fill="#2f6fed" font-size="10.5" letter-spacing="0.06em">REPLAY — later, on demand: "Run regression suite" loops this for every stored regression</text>
+
+            <rect x="20" y="145" width="132" height="42" rx="21" fill="#eef1f6" stroke="#12181f" stroke-width="1.2"/>
+            <text x="86" y="171" text-anchor="middle" fill="#12181f" font-size="11">inject fault</text>
+            <line x1="152" y1="166" x2="170" y2="166" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d8)"/>
+
+            <rect x="172" y="145" width="132" height="42" rx="21" fill="#eef1f6" stroke="#12181f" stroke-width="1.2"/>
+            <text x="238" y="171" text-anchor="middle" fill="#12181f" font-size="11">probe (before)</text>
+            <line x1="304" y1="166" x2="322" y2="166" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d8)"/>
+
+            <rect x="324" y="145" width="132" height="42" rx="21" fill="#eef1f6" stroke="#12181f" stroke-width="1.2"/>
+            <text x="390" y="171" text-anchor="middle" fill="#12181f" font-size="11">apply fix</text>
+            <line x1="456" y1="166" x2="474" y2="166" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d8)"/>
+
+            <rect x="476" y="145" width="132" height="42" rx="21" fill="#eef1f6" stroke="#12181f" stroke-width="1.2"/>
+            <text x="542" y="171" text-anchor="middle" fill="#12181f" font-size="11">probe (after)</text>
+            <line x1="608" y1="166" x2="626" y2="166" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d8)"/>
+
+            <rect x="628" y="145" width="150" height="42" rx="21" fill="none" stroke="#2f6fed" stroke-width="1.4"/>
+            <text x="703" y="171" text-anchor="middle" fill="#2f6fed" font-size="11">measure() + decide()</text>
+
+            <line x1="703" y1="187" x2="703" y2="215" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d8)"/>
+
+            <circle cx="612" cy="238" r="5" fill="#1a9d5c"/>
+            <text x="626" y="242" fill="#12181f" font-size="11">passed → regression stays healthy</text>
+            <circle cx="612" cy="262" r="5" fill="#c8324a"/>
+            <text x="626" y="266" fill="#12181f" font-size="11">failed → flagged, needs attention</text>
+          </g>
+        </svg>

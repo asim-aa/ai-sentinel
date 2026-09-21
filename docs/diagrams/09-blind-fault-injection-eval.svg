@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="400" viewBox="0 0 840 400" role="img" aria-label="A fault mode is picked from a shuffled pass through all five injectable faults and set via the admin API, hidden from the detection code, then six probes are sent. Below a blind boundary, the real production detect function and rootcause.diagnose are called exactly as a live sweep would call them, producing a diagnosed stage or none. Only then is the actually injected expected stage revealed and compared, scoring the trial as correct, wrong stage, inconclusive, or not detected.">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+          <defs>
+            <marker id="arrow-d9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#12181f"/>
+            </marker>
+          </defs>
+          <g font-family="'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="11">
+            <text x="20" y="18" fill="#5b6675" font-size="10.5" letter-spacing="0.05em" font-style="italic">CHOSEN HERE, HIDDEN FROM DETECTION</text>
+
+            <rect x="20" y="30" width="150" height="42" rx="6" fill="#ffffff" stroke="#12181f" stroke-width="1.2"/>
+            <text x="95" y="55" text-anchor="middle" fill="#12181f">pick fault (shuffled)</text>
+            <line x1="170" y1="51" x2="198" y2="51" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d9)"/>
+
+            <rect x="200" y="30" width="190" height="42" rx="6" fill="#ffffff" stroke="#12181f" stroke-width="1.2"/>
+            <text x="295" y="55" text-anchor="middle" fill="#12181f">POST /admin/fault</text>
+            <line x1="390" y1="51" x2="418" y2="51" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d9)"/>
+
+            <rect x="420" y="30" width="150" height="42" rx="6" fill="#ffffff" stroke="#12181f" stroke-width="1.2"/>
+            <text x="495" y="55" text-anchor="middle" fill="#12181f">send 6 probes</text>
+
+            <line x1="20" y1="98" x2="820" y2="98" stroke="#5b6675" stroke-width="1.1" stroke-dasharray="4 4"/>
+            <text x="420" y="92" text-anchor="middle" fill="#5b6675" font-size="10">· · · blind boundary — the code below only ever sees spans · · ·</text>
+
+            <text x="20" y="122" fill="#2f6fed" font-size="10.5" letter-spacing="0.05em">REAL PRODUCTION CODE PATH — same detect_fn + diagnose() a live sweep runs</text>
+
+            <rect x="130" y="135" width="220" height="44" rx="6" fill="#ffffff" stroke="#2f6fed" stroke-width="1.4"/>
+            <text x="240" y="162" text-anchor="middle" fill="#2f6fed">detect_fn(db_path)</text>
+            <line x1="350" y1="157" x2="378" y2="157" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d9)"/>
+
+            <rect x="380" y="135" width="220" height="44" rx="6" fill="#ffffff" stroke="#2f6fed" stroke-width="1.4"/>
+            <text x="490" y="162" text-anchor="middle" fill="#2f6fed">rootcause.diagnose()</text>
+            <line x1="600" y1="157" x2="628" y2="157" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d9)"/>
+
+            <rect x="630" y="135" width="180" height="44" rx="6" fill="#eef1f6" stroke="#12181f" stroke-width="1.2"/>
+            <text x="720" y="157" text-anchor="middle" fill="#12181f" font-size="10.5">diagnosed_stage</text>
+            <text x="720" y="172" text-anchor="middle" fill="#5b6675" font-size="9.5">(or none)</text>
+
+            <line x1="720" y1="179" x2="720" y2="205" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d9)"/>
+            <line x1="720" y1="205" x2="440" y2="215" stroke="#12181f" stroke-width="1.2"/>
+
+            <rect x="270" y="217" width="340" height="54" rx="6" fill="#ffffff" stroke="#12181f" stroke-width="1.3"/>
+            <text x="440" y="240" text-anchor="middle" fill="#12181f" font-size="11">reveal expected_stage</text>
+            <text x="440" y="257" text-anchor="middle" fill="#5b6675" font-size="10">compare to diagnosed_stage</text>
+
+            <line x1="440" y1="271" x2="440" y2="296" stroke="#12181f" stroke-width="1.2"/>
+            <line x1="75" y1="296" x2="744" y2="296" stroke="#5b6675" stroke-width="1" stroke-dasharray="3 3"/>
+
+            <line x1="75" y1="296" x2="75" y2="312" stroke="#5b6675" stroke-width="1"/>
+            <rect x="20" y="314" width="110" height="34" rx="17" fill="none" stroke="#1a9d5c" stroke-width="1.4"/>
+            <text x="75" y="336" text-anchor="middle" fill="#1a9d5c" font-size="10.5">correct</text>
+
+            <line x1="283" y1="296" x2="283" y2="312" stroke="#5b6675" stroke-width="1"/>
+            <rect x="213" y="314" width="140" height="34" rx="17" fill="none" stroke="#966018" stroke-width="1.4"/>
+            <text x="283" y="336" text-anchor="middle" fill="#966018" font-size="10.5">wrong_stage</text>
+
+            <line x1="511" y1="296" x2="511" y2="312" stroke="#5b6675" stroke-width="1"/>
+            <rect x="436" y="314" width="150" height="34" rx="17" fill="none" stroke="#5b6675" stroke-width="1.4"/>
+            <text x="511" y="336" text-anchor="middle" fill="#5b6675" font-size="10.5">inconclusive</text>
+
+            <line x1="744" y1="296" x2="744" y2="312" stroke="#5b6675" stroke-width="1"/>
+            <rect x="669" y="314" width="150" height="34" rx="17" fill="none" stroke="#c8324a" stroke-width="1.4"/>
+            <text x="744" y="336" text-anchor="middle" fill="#c8324a" font-size="10.5">not_detected</text>
+          </g>
+        </svg>

@@ -11,9 +11,11 @@ It's built around a small instrumented demo AI service, so the whole loop is run
 demoable, not just described. Try it in one command (needs [`uv`](https://docs.astral.sh/uv/)):
 `uv sync && ./scripts/run_demo.sh`
 
-**Architecture, in diagrams:** see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full
-write-up, or the [published diagram set](https://claude.ai/artifact/6CK9V5RV3fi4WhjNauvZnG) for
-the rendered version.
+![The core loop: inject, detect, diagnose, recommend, remediate with one click](docs/diagrams/00-core-loop.svg)
+
+**Architecture, in diagrams:** see [`docs/DIAGRAMS.md`](docs/DIAGRAMS.md) for all eleven diagrams and
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full write-up, or the
+[rendered version](https://claude.ai/artifact/6CK9V5RV3fi4WhjNauvZnG) with the same content.
 
 ## Evidence
 

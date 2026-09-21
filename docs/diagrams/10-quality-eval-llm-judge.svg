@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="300" viewBox="0 0 840 300" role="img" aria-label="One of four fixed test prompts goes through the normal demo chat pipeline, using whichever backend is currently active, and returns a response. That prompt and response together go to a judge model, selected independently of the demo's own primary and backup backends, preferring Anthropic and falling back to OpenAI, with no mock fallback. The judge returns pass or fail with one sentence of reasoning.">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+          <defs>
+            <marker id="arrow-d10" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#12181f"/>
+            </marker>
+          </defs>
+          <g font-family="'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="11.5">
+            <rect x="20" y="118" width="120" height="44" rx="22" fill="#eef1f6" stroke="#12181f" stroke-width="1.2"/>
+            <text x="80" y="145" text-anchor="middle" fill="#12181f" font-size="10.5">fixed prompt</text>
+            <line x1="140" y1="140" x2="166" y2="140" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d10)"/>
+
+            <rect x="168" y="104" width="210" height="72" rx="8" fill="#ffffff" stroke="#12181f" stroke-width="1.3"/>
+            <text x="273" y="132" text-anchor="middle" fill="#12181f" font-size="11">demo /chat</text>
+            <text x="273" y="150" text-anchor="middle" fill="#5b6675" font-size="9.5">same primary/backup</text>
+            <text x="273" y="163" text-anchor="middle" fill="#5b6675" font-size="9.5">as everywhere else (§05)</text>
+            <line x1="378" y1="140" x2="404" y2="140" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d10)"/>
+
+            <rect x="406" y="118" width="130" height="44" rx="22" fill="#eef1f6" stroke="#12181f" stroke-width="1.2"/>
+            <text x="471" y="145" text-anchor="middle" fill="#12181f" font-size="10.5">response text</text>
+            <line x1="536" y1="140" x2="562" y2="140" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d10)"/>
+
+            <rect x="564" y="90" width="230" height="100" rx="8" fill="#ffffff" stroke="#2f6fed" stroke-width="1.5"/>
+            <text x="679" y="118" text-anchor="middle" fill="#2f6fed" font-size="11.5">judge model</text>
+            <text x="679" y="138" text-anchor="middle" fill="#5b6675" font-size="9.5">Anthropic preferred,</text>
+            <text x="679" y="152" text-anchor="middle" fill="#5b6675" font-size="9.5">OpenAI fallback</text>
+            <text x="679" y="172" text-anchor="middle" fill="#c8324a" font-size="9.5">— no mock fallback —</text>
+
+            <line x1="679" y1="190" x2="679" y2="218" stroke="#2f6fed" stroke-width="1.3" marker-end="url(#arrow-d10)"/>
+
+            <rect x="554" y="220" width="250" height="50" rx="8" fill="#eef1f6" stroke="#12181f" stroke-width="1.3"/>
+            <text x="679" y="242" text-anchor="middle" fill="#12181f" font-size="11">PASS / FAIL + reasoning</text>
+            <text x="679" y="258" text-anchor="middle" fill="#5b6675" font-size="9.5">priced via pricing.py, like any llm_call</text>
+          </g>
+        </svg>

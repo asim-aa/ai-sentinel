@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="90" viewBox="0 0 760 90" role="img" aria-label="The core loop: inject or encounter a fault, detect it against a rolling baseline, diagnose which pipeline stage caused it, recommend a fix, and remediate with one click.">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+      <defs>
+        <marker id="arrow-loop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#12181f"/>
+        </marker>
+      </defs>
+      <g font-family="'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" text-anchor="middle">
+        <rect x="10" y="25" width="120" height="40" rx="20" fill="#eef1f6" stroke="#12181f" stroke-width="1.2"/>
+        <text x="70" y="49" fill="#12181f">inject</text>
+        <line x1="130" y1="45" x2="158" y2="45" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-loop)"/>
+
+        <rect x="160" y="25" width="120" height="40" rx="20" fill="#eef1f6" stroke="#12181f" stroke-width="1.2"/>
+        <text x="220" y="49" fill="#12181f">detect</text>
+        <line x1="280" y1="45" x2="308" y2="45" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-loop)"/>
+
+        <rect x="310" y="25" width="120" height="40" rx="20" fill="#eef1f6" stroke="#12181f" stroke-width="1.2"/>
+        <text x="370" y="49" fill="#12181f">diagnose</text>
+        <line x1="430" y1="45" x2="458" y2="45" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-loop)"/>
+
+        <rect x="460" y="25" width="120" height="40" rx="20" fill="#eef1f6" stroke="#12181f" stroke-width="1.2"/>
+        <text x="520" y="49" fill="#12181f">recommend</text>
+        <line x1="580" y1="45" x2="608" y2="45" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-loop)"/>
+
+        <rect x="610" y="15" width="140" height="60" rx="10" fill="none" stroke="#2f6fed" stroke-width="1.6"/>
+        <text x="680" y="40" fill="#2f6fed" font-weight="600">remediate</text>
+        <text x="680" y="58" fill="#5b6675" font-size="10.5">1 click</text>
+      </g>
+    </svg>

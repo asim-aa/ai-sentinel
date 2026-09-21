@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="300" viewBox="0 0 840 300" role="img" aria-label="Three health check lanes. Liveness and readiness are polled by the dashboard every 3 seconds and check process status or recent error rate. The synthetic check runs independently every 60 seconds and sends a real prompt through the full pipeline, verifying the exact expected output.">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+          <defs>
+            <marker id="arrow-d2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#12181f"/>
+            </marker>
+          </defs>
+          <g font-family="'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12">
+            <!-- lane 1 -->
+            <rect x="20" y="25" width="150" height="42" rx="6" fill="#eef1f6" stroke="#12181f" stroke-width="1.1"/>
+            <text x="95" y="50" text-anchor="middle" fill="#12181f">dashboard poll</text>
+            <line x1="170" y1="46" x2="198" y2="46" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d2)"/>
+            <rect x="200" y="25" width="180" height="42" rx="6" fill="#ffffff" stroke="#12181f" stroke-width="1.3"/>
+            <text x="290" y="50" text-anchor="middle" fill="#12181f">GET /health/live</text>
+            <text x="400" y="41" font-family="'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif" fill="#12181f" font-size="12">always → <tspan fill="#1a9d5c">{status: ok}</tspan></text>
+            <text x="400" y="60" font-family="'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif" fill="#5b6675" font-size="11">on failure: the process itself is down</text>
+            <text x="800" y="22" text-anchor="end" font-size="10.5" fill="#5b6675">every 3s</text>
+
+            <line x1="20" y1="85" x2="820" y2="85" stroke="#dde2e9"/>
+
+            <!-- lane 2 -->
+            <rect x="20" y="100" width="150" height="42" rx="6" fill="#eef1f6" stroke="#12181f" stroke-width="1.1"/>
+            <text x="95" y="125" text-anchor="middle" fill="#12181f">dashboard poll</text>
+            <line x1="170" y1="121" x2="198" y2="121" stroke="#12181f" stroke-width="1.2" marker-end="url(#arrow-d2)"/>
+            <rect x="200" y="100" width="180" height="42" rx="6" fill="#ffffff" stroke="#12181f" stroke-width="1.3"/>
+            <text x="290" y="125" text-anchor="middle" fill="#12181f">GET /health/ready</text>
+            <text x="400" y="116" font-family="'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif" fill="#12181f" font-size="12">last 30s of llm_call spans</text>
+            <text x="400" y="135" font-family="'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif" fill="#5b6675" font-size="11">error_rate &gt; 50% (n≥3) → <tspan fill="#c8324a">503</tspan></text>
+            <text x="800" y="97" text-anchor="end" font-size="10.5" fill="#5b6675">every 3s</text>
+
+            <line x1="20" y1="160" x2="820" y2="160" stroke="#dde2e9"/>
+
+            <!-- lane 3 -->
+            <rect x="20" y="178" width="150" height="52" rx="6" fill="none" stroke="#2f6fed" stroke-width="1.3"/>
+            <text x="95" y="200" text-anchor="middle" fill="#2f6fed">synthetic.py</text>
+            <text x="95" y="216" text-anchor="middle" fill="#2f6fed" font-size="10.5">loop</text>
+            <line x1="170" y1="204" x2="198" y2="204" stroke="#2f6fed" stroke-width="1.3" marker-end="url(#arrow-d2)"/>
+            <rect x="200" y="178" width="180" height="52" rx="6" fill="#ffffff" stroke="#2f6fed" stroke-width="1.4"/>
+            <text x="290" y="200" text-anchor="middle" fill="#12181f">POST /chat</text>
+            <text x="290" y="218" text-anchor="middle" font-family="'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif" font-size="10" fill="#5b6675">"Return exactly HEALTHY"</text>
+            <text x="400" y="194" font-family="'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif" fill="#12181f" font-size="12">full pipeline: auth→retrieval→llm→tool</text>
+            <text x="400" y="213" font-family="'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif" fill="#12181f" font-size="12">answer.strip() == <tspan fill="#1a9d5c">"HEALTHY"</tspan> ?</text>
+            <text x="400" y="232" font-family="'IBM Plex Sans', -apple-system, 'Segoe UI', sans-serif" fill="#5b6675" font-size="11">on failure: recorded in synthetic_checks</text>
+            <text x="800" y="175" text-anchor="end" font-size="10.5" fill="#2f6fed">every 60s · runs with no browser open</text>
+          </g>
+        </svg>

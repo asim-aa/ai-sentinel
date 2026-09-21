@@ -1,9 +1,10 @@
 # AI Sentinel — architecture
 
-The rendered version of this document, with diagrams, is published at:
+The diagrams are in [DIAGRAMS.md](DIAGRAMS.md), and a rendered version of both is published at:
 https://claude.ai/artifact/6CK9V5RV3fi4WhjNauvZnG
 
-This file is the text-only companion — same six sections, same specifics, no pictures.
+This file is the text-only companion — the same specifics as the diagrams, plus the sections that
+have no diagram of their own (§10 to §13: RCA evidence panel, audit trail, timeline, reliability card).
 
 ## 1. System architecture
 
