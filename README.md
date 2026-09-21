@@ -1,8 +1,15 @@
 # AI Sentinel
 
-A reliability engine for AI services: three-level health checks, threshold-based failure
-detection, per-stage root-cause diagnosis, and one-click remediation — built around a small
-instrumented demo AI service so the whole loop is runnable and demoable, not just described.
+**AI Sentinel is a reliability engine for AI services.** It watches a live AI pipeline, detects when
+it degrades, works out *which stage* caused it, recommends a fix you approve with one click, then
+verifies the fix actually worked and rolls it back if it didn't. Its diagnosis is graded by a blind
+fault-injection eval, where the fault is withheld from the code being tested. Across four 50-trial
+runs it went from 68% to 98%, and the eval itself is what exposed a bug in the detector's baseline
+logic (see [Evidence](#evidence) for what that number does and doesn't prove).
+
+It's built around a small instrumented demo AI service, so the whole loop is runnable and
+demoable, not just described. Try it in one command (needs [`uv`](https://docs.astral.sh/uv/)):
+`uv sync && ./scripts/run_demo.sh`
 
 **Architecture, in diagrams:** see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full
 write-up, or the [published diagram set](https://claude.ai/artifact/6CK9V5RV3fi4WhjNauvZnG) for
